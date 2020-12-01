@@ -3,7 +3,7 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import LFP_functions as LFPF
+import MouseVisCode.LFP_functions as LFPF
 import scipy.signal as signal
 import scipy.io as sio
 
