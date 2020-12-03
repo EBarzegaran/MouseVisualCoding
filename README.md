@@ -1,5 +1,5 @@
-# MouseVisualCoding
-In this repo I will develop my code for mouse visual coding in python.
+# Mouse Visual Coding
+In this repository I will develope my code in python for decoding analysis based on local field potential recordings of mouse visual cortex.
 
 Here I use a publicly available dataset from Allen Brain institute: https://portal.brain-map.org/explore/circuits/visual-coding-neuropixels
 
