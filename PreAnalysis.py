@@ -5,25 +5,20 @@ import os
 import MouseVisCode.Probe_functions as ProbeF
 from allensdk.brain_observatory.ecephys.ecephys_project_cache import EcephysProjectCache
 
-ResultPath = '../../preliminary_results'
+ResultPath = '/Users/elhamb/Documents/Data/AllenBrainObserver_new/preliminary_results' # where to save the results
 # set necessary paths
 if not os.path.exists(ResultPath):
     os.mkdir(ResultPath)
 
 
 # this path determines where the downloaded data will be stored
-manifest_path = os.path.join("/Volumes/Elham-Unifr/Data/AllenBrain/ecephys_project_cache", "manifest.json")
+manifest_path = os.path.join("/Volumes/Elham-Unifr/Data/AllenBrainAll/ecephys_project_cache", "manifest.json")
 cache = EcephysProjectCache.from_warehouse(manifest=manifest_path)
-sessions = cache.get_session_table()
-
-os.listdir("/Volumes/Elham-Unifr/Data/AllenBrain/ecephys_project_cache")
-
-brain_observatory_type_sessions = sessions[sessions["session_type"] == "functional_connectivity"]
-brain_observatory_type_sessions.reset_index(inplace=True)
 
 
 # -indicate the animal IDs
-session_id = {767871931,768515987,771160300,771990200,774875821,778240327,779839471,781842082,821695405}
+#session_id = {767871931,768515987,771160300,771990200,774875821,778240327,779839471,781842082,821695405}
+session_id = {732592105}
 
 for S_id in session_id:
     print(S_id)
@@ -43,11 +38,11 @@ for S_id in session_id:
         lfp = session.get_lfp(probe_id)
 
         # -first extract probe info and save
-        ProbeF.extract_probeinfo(session, lfp, probe_id, Resultspath,True)
+        ProbeF.extract_probeinfo(session, lfp, probe_id, Resultspath,doRF=False)
 
         # -extract and prepare the data for a condition
         cond_name = 'drifting_gratings_75_repeats'    #'flashes'
-        Prestim = 0             # prestimulus time in sec
+        Prestim = 0.5             # prestimulus time in sec
         down_rate = 5           # down sampling -> the original sampling rate is 1250 Hz
         ProbeF.prepare_condition(session, lfp, probe_id, cond_name, Resultspath, Prestim, down_rate)
         
