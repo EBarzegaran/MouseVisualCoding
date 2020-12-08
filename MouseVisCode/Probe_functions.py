@@ -36,7 +36,7 @@ def extract_probeinfo(session, lfp, probe_id, Resultspath, doRF):
     if not os.path.isdir(os.path.join(Resultspath, 'PrepData')):
         os.mkdir(os.path.join(Resultspath, 'PrepData'))
 
-    sio.savemat(os.path.join(Resultspath, 'PrepData', '{}_ProbeInfo_RF.mat'.format(probe_id)),
+    sio.savemat(os.path.join(Resultspath, 'PrepData', '{}_ProbeInfo.mat'.format(probe_id)),
                 {'Coords': A.to_dict('list'), 'structure_acronyms': structure_acronyms, 'intervals': intervals,
                  'RF_Results': rf_results})
 
@@ -101,6 +101,11 @@ def prepare_condition(session, lfp, probe_id, cond_name, Resultspath, Prestim, d
     sio.savemat(os.path.join(Resultspath, 'PrepData', '{}_{}{}.mat'.format(probe_id, cond_name, int(dSRate))),
                 {'Y': Y, 'Times': Times, 'srate': dSRate, 'cnd_info': cnd_info.to_dict("list"), 'cnd_id': cnd_id
                     , 'ROI': structure_acronyms[structure_acronyms.shape[0] - 2]})
+
+    a_file = open(os.path.join(Resultspath, 'PrepData', '{}_{}{}.pkl'.format(probe_id, cond_name, int(dSRate))), "wb")
+    pickle.dump({'Y': Y, 'Times': Times, 'srate': dSRate, 'cnd_info': cnd_info.to_dict("list"), 'cnd_id': cnd_id
+                    , 'ROI': structure_acronyms[structure_acronyms.shape[0] - 2]}, a_file)
+    a_file.close()
 
 
 def CSD_plots(session, lfp, probe_id, Resultspath):
@@ -227,6 +232,6 @@ def RF_mapping_plot(session, lfp, probe_id, doplot, Resultspath):
         plt.tight_layout
         fig.savefig('{}/Probe_{}_RF_mapping_all.png'.format(Resultspath, probe_id), dpi=300)
         plt.close()
+        return {'Data': Data_final, 'CondInfo': cnd_info.to_dict('list'), 'CondOrganized': Results2['CondInfo']}
     else:
-
         return {'Data': Data_final, 'CondInfo': cnd_info.to_dict('list'), 'CondOrganized': Results2['CondInfo']}

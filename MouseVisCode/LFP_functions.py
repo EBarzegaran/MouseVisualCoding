@@ -66,11 +66,11 @@ def organize_epoch(lfp, presentations, prestim=.5, poststim=.0):
         if Cnd % 10 == 0: print(Cnd)
         Cond_id.append(CI.unique()[Cnd])
         PC = presentations[CI == CI.unique()[Cnd]]
-        for Ind in range(0, CI.value_counts().array[Cnd]):
+        for Ind in range(0, len(PC)): #CI.value_counts().array[Cnd]):
             TW = np.logical_and(lfp['time'].values > (PC['start_time'].array[Ind] - prestim),
                                 lfp['time'].values < (PC['stop_time'].array[Ind] + poststim))
             lfp_cond[:, 0:lfp[{"time": TW}].T.shape[1], Ind, Cnd] = lfp[
-                {"time": TW}].T;  # sometimes the trial lengths are different
+                {"time": TW}].T  # sometimes the trial lengths are different
             time[0:lfp[{"time": TW}].T.shape[1], Ind, Cnd] = lfp["time"][TW].values - PC['start_time'].array[Ind]
     lfp_cond[0, :, :, :] = 0
     return {'lfp': lfp_cond, 'conditioninfo': Cond_id, 'time': time}
