@@ -151,9 +151,6 @@ def CSD_plots(session, lfp, probe_id, Resultspath):
     fig.set_size_inches(15, 5)
     plt.set_cmap("coolwarm")
 
-    # -FormatColorbar-
-    import matplotlib.ticker as ticker
-
     # ---
     Ma = []
     for Cnd in np.array(range(CI.nunique() - 1, -1, -1)):  # range(0,CI.nunique()):
@@ -184,10 +181,8 @@ def CSD_plots(session, lfp, probe_id, Resultspath):
         Ma.append(abs(lfp_cond_M).max() / 1.5)
         p.set_clim(-max(Ma), max(Ma))
 
-    # plt.set_cmap("viridis");#"seismic")
     plt.set_cmap("coolwarm")
     plt.tight_layout()
-    # plt.show()
     fig.savefig('{}/Probe_{}_flashes_csd.png'.format(Resultspath, probe_id), dpi=300)
 
 
@@ -206,7 +201,6 @@ def RF_mapping_plot(session, lfp, probe_id, doplot, Resultspath):
 
     Data_final = np.zeros([min(lfp.shape), 3, 9, 9])
 
-    # Data_final = RF_mapping(results,presentations,[50,110],np.array(range(69,90)))
 
     for E in range(0, min(lfp.shape)):
         if E % 5 == 0: print(E)

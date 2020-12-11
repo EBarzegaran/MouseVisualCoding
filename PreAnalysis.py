@@ -5,7 +5,7 @@ import os
 import MouseVisCode.Probe_functions as ProbeF
 from allensdk.brain_observatory.ecephys.ecephys_project_cache import EcephysProjectCache
 
-ResultPath = '/Users/elhamb/Documents/Data/AllenBrainObserver_new/Results' # where to save the results
+ResultPath = '/Volumes/Elham-Unifr/Data/AllenBrainAll/Results' # where to save the results
 # set necessary paths
 if not os.path.exists(ResultPath):
     os.mkdir(ResultPath)
@@ -18,7 +18,7 @@ cache = EcephysProjectCache.from_warehouse(manifest=manifest_path)
 
 # -indicate the animal IDs
 #session_id = {767871931,768515987,771160300,771990200,774875821,778240327,779839471,781842082,821695405}
-session_id = {732592105}
+session_id = {767871931}
 
 for S_id in session_id:
     print(S_id)
@@ -38,10 +38,10 @@ for S_id in session_id:
         lfp = session.get_lfp(probe_id)
 
         # -first extract probe info and save
-        #ProbeF.extract_probeinfo(session, lfp, probe_id, Resultspath,doRF=True)
+        ProbeF.extract_probeinfo(session, lfp, probe_id, Resultspath,doRF=True)
 
         # -extract and prepare the data for a condition
-        cond_name = 'drifting_gratings'#'drifting_gratings_75_repeats'    #'flashes'
+        cond_name = 'drifting_gratings_75_repeats' # 'drifting_gratings'  #'flashes'
         Prestim = 1             # prestimulus time in sec
         down_rate = 5           # down sampling -> the original sampling rate is 1250 Hz
         ProbeF.prepare_condition(session, lfp, probe_id, cond_name, Resultspath, Prestim, down_rate)
