@@ -2,7 +2,7 @@
 # coding: utf-8
 
 import os
-import MouseVisCode.Probe_functions as ProbeF
+import MouseVisCode.probe_functions as ProbeF
 from allensdk.brain_observatory.ecephys.ecephys_project_cache import EcephysProjectCache
 
 ResultPath = '/Volumes/Elham-Unifr/Data/AllenBrainAll/Results' # where to save the results

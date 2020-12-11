@@ -2,7 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import LFP_functions as LFPF
+import lfp_functions as LFPF
 import scipy.signal as signal
 import scipy.io as sio
 import pickle
@@ -36,10 +36,10 @@ def extract_probeinfo(session, lfp, probe_id, Resultspath, doRF):
     if not os.path.isdir(os.path.join(Resultspath, 'PrepData')):
         os.mkdir(os.path.join(Resultspath, 'PrepData'))
 
-    sio.savemat(os.path.join(Resultspath, 'PrepData', '{}_ProbeInfo.mat'.format(probe_id)),
+    """sio.savemat(os.path.join(Resultspath, 'PrepData', '{}_ProbeInfo.mat'.format(probe_id)),
                 {'Coords': A.to_dict('list'), 'structure_acronyms': structure_acronyms, 'intervals': intervals,
                  'RF_Results': rf_results})
-
+    """
     a_file = open(os.path.join(Resultspath,'PrepData','{}_ProbeInfo.pkl'.format(probe_id)), "wb")
     pickle.dump({'Coords':A.to_dict('list'),'structure_acronyms':structure_acronyms,'intervals':intervals},a_file)
     a_file.close()
@@ -63,24 +63,19 @@ def prepare_condition(session, lfp, probe_id, cond_name, Resultspath, Prestim, d
     Times = results['time'].mean(axis=1)[:, 7]
     Times[Times.shape[0] - 1] = Times[Times.shape[0] - 2] * 2 - Times[Times.shape[0] - 3]
     lfp_cond = (results['lfp'])
-    lfp_cond = LFPF.bipolar(lfp_cond)  # LFPF.gaussian_filter_trials(lfp_cond, 1));
 
     # --------------------------MATLAB------------------------------
     Times = results['time'].mean(axis=1)[:, 7]
     Times[Times.shape[0] - 1] = Times[Times.shape[0] - 2] * 2 - Times[Times.shape[0] - 3]
 
     lfp_cond = (results['lfp'])
-    #
     if lfp_cond == 'flashes':
         lfp_cond = LFPF.csd(LFPF.gaussian_filter_trials(lfp_cond, 1))  # just in case of flashes for layer assignment
     else:
-        lfp_cond = LFPF.bipolar(lfp_cond)
+        lfp_cond = LFPF.bipolar(lfp_cond)# LFPF.gaussian_filter_trials(lfp_cond, 1));
 
     Y = lfp_cond
-    # Y = Y[intervals[intervals.shape[0]-3]:intervals[intervals.shape[0]-2]+1];
     Y = np.moveaxis(Y, -2, 0)
-    # Y = Y[:,np.arange(0,Y.shape[1],2),:]
-    # Y = Y[:,np.arange(Y.shape[1],0,-1),:] % reverse the electrode order! I do this in matlab
 
     # downsampling the signal
     # Here I downsample the signal, to allow better estimation of FC in lower frequencies using AR models:
@@ -97,11 +92,11 @@ def prepare_condition(session, lfp, probe_id, cond_name, Resultspath, Prestim, d
     # save data
     if not os.path.exists(os.path.join(Resultspath, 'PrepData')):
         os.mkdir(os.path.join(Resultspath, 'PrepData'))
-
+    """
     sio.savemat(os.path.join(Resultspath, 'PrepData', '{}_{}{}.mat'.format(probe_id, cond_name, int(dSRate))),
                 {'Y': Y, 'Times': Times, 'srate': dSRate, 'cnd_info': cnd_info.to_dict("list"), 'cnd_id': cnd_id
                     , 'ROI': structure_acronyms[structure_acronyms.shape[0] - 2]})
-
+    """
     a_file = open(os.path.join(Resultspath, 'PrepData', '{}_{}{}.pkl'.format(probe_id, cond_name, int(dSRate))), "wb")
     pickle.dump({'Y': Y, 'Times': Times, 'srate': dSRate, 'cnd_info': cnd_info.to_dict("list"), 'cnd_id': cnd_id
                     , 'ROI': structure_acronyms[structure_acronyms.shape[0] - 2]}, a_file)
@@ -184,7 +179,7 @@ def CSD_plots(session, lfp, probe_id, Resultspath):
     plt.set_cmap("coolwarm")
     plt.tight_layout()
     fig.savefig('{}/Probe_{}_flashes_csd.png'.format(Resultspath, probe_id), dpi=300)
-
+    plt.close()
 
 def RF_mapping_plot(session, lfp, probe_id, doplot, Resultspath):
     # THIS IS RF MAPPING USING GABORS
