@@ -1,15 +1,18 @@
 
 import os
-from allensdk.brain_observatory.ecephys.ecephys_project_cache import EcephysProjectCache
 import MouseVisCode.probe_functions as ProbeF
+import _pickle as cPickle
+import pandas as pd
+
 
 class LFPSession(object):
-
     """
-    Class to store and retrieve LFP data and estimate iPDC
+    Class to access, store, and retrieve LFP session data, apply pre-processing and estimate iPDC
+    ------------------------------------------------------------------------
+    ------------------------------------------------------------------------
     """
 
-    def __init__(self,cache,session_id,result_path,cond_name='drifting_gratings'):
+    def __init__(self,cache,session_id,result_path):
 
         self.session_id = session_id
 
@@ -18,41 +21,142 @@ class LFPSession(object):
             os.mkdir(os.path.join(result_path, str(self.session_id)))
         self.result_path = os.path.join(result_path, str(self.session_id))
 
-        # Get allenSDK session. This variable only exist when running code, will not save in the file
-        self.session = cache.get_session_data(session_id)
+        # check if the LFP session already exist, load that session preprocessing info
+        try:
+            self.load_session()
+        except FileNotFoundError:
+            # self.cond_name = cond_name
+            self.preprocess = []  # any preprocessing is done? list of the preprocessing params
+            self.RF = False  # Channel info is stored?
+            self.CSD = False  # CSD plots for layer assignment are done before?
+            self.ROIs = {}  # empty dictionary indicating cortical ROI (VIS areas) and their relative probes
+            self.session = cache.get_session_data(session_id)  # Get allenSDK session
+            # variables for running time only
+            self.probes = dict.fromkeys(self.session.probes.index.values) # Get the probes for this session, make a dictionary maybe
+            self.loaded_cond = None  #Load LFP option
+            self.layer_selected = False  # if the loaded LFP is spatially down-sampled
 
-        # Get the probes for this session
-        self.probe_ids = self.session.probes.index.values
+    ## Class methods read/write the LFPSession from/to file (note: only preprocessing info is important)
+    def save_session(self):
+        filename = os.path.join(self.result_path, 'LFPSession_{}.obj'.format(self.session_id))
+        filehandler = open(filename, "wb")
+        # Do not save the loaded LFP matrices since they are too big
+        temp = self
+        temp.probes = dict.fromkeys(temp.probes.keys())
+        temp.loaded_cond = None
+        temp.layer_selected = False
+        cPickle.dump(temp.__dict__, filehandler)
+        filehandler.close()
 
-        self.cond_name = cond_name
-        self.preprocessed = False
-        self.layer_selected = False
+    def load_session(self): # be careful about this -> result_path
+        filename = os.path.join(self.result_path, 'LFPSession_{}.obj'.format(self.session_id))
+        file = open(filename, 'rb')
+        dataPickle = file.read()
+        file.close()
+        self.__dict__ = cPickle.loads(dataPickle)
 
+    def __str__(self):
+        return str(self.__dict__).replace(", '", ",\n '")
 
-    def preprocessing(self,do_RF=True,down_sample_rate=5):
+    ## Processing methods
+    def preprocessing(self,cond_name='drifting_gratings', down_sample_rate=5, Prestim = 1, do_RF=False, do_CSD=False, do_probe=False):
+        """
+        Runs the preprocessing on the session with the input parameters, if it has not been run before.
 
-        for probe_id in self.probe_ids:
+        :param cond_name: condition name to be preprocessed
+        :param do_RF: do receptive field mapping plots? Attention: this may take a while if set True, note it is not RF mappning based on permutation
+        :param down_sample_rate:
+        :param Prestim: prestimulus time in sec
+        :return:
+        """
+        # first indicate if the
+        preproc_dic = {
+            'cond_name': cond_name,
+            'srate': down_sample_rate,
+            'prestim': Prestim,
+            }
+        #'layer_selected':False# include in the file name
 
-            # load lfp data
-            lfp =self.session.get_lfp(probe_id)
+        if not search_preproc(self.preprocess,preproc_dic):
 
-            # first extract probe info and save
-            ProbeF.extract_probeinfo(self.session, lfp, probe_id, self.result_path, do_RF)
+            for probe_id in self.probes.keys():
 
-            # extract and prepare the data for a condition
-            Prestim = 1  # prestimulus time in sec
-            ProbeF.prepare_condition(self.session, lfp, probe_id, self.cond_name, self.result_path, Prestim,down_sample_rate)
+                # Load lfp data
+                lfp =self.session.get_lfp(probe_id)
 
-            # CSD plot for the probe
-            ProbeF.CSD_plots(self.session, lfp, probe_id, self.result_path)
+                # First extract probe info and save
+                if do_RF:
+                    ProbeF.extract_probeinfo(self.session, lfp, probe_id, self.result_path, do_RF)
+                    self.RF = True
+                elif not self.RF or do_probe:
+                    ProbeF.extract_probeinfo(self.session, lfp, probe_id, self.result_path, False)
+                    self.RF = True
 
-        self.preprocessed=True
+                # CSD plot for the probe
+                if (not self.CSD) and do_CSD:
+                    ProbeF.CSD_plots(self.session, lfp, probe_id, self.result_path)
 
+                # Extract and prepare the data for a condition
+                if cond_name is not None:
+                    ROI = ProbeF.prepare_condition(self.session, self.session_id, lfp, probe_id, cond_name, self.result_path, Prestim,down_sample_rate)
+                    self.ROIs[ROI] = probe_id
 
-    def layerselection(self):
-        for I in range(0, self.session.probes.index.values.shape[0]):
-            # if the layer file did not exist then return with a warning
-            print(I)# downsample the
+            # Add the pre-process params as a dictionary to the list of preprocessed data
+            if cond_name is not None:
+                self.preprocess.append(preproc_dic)
+
+            if (not self.CSD) and do_CSD:
+                self.CSD = True
+
+            # Save the session after preprocessing
+            self.save_session()
+
+    def load_LFPprobes(self, cond):
+        for probe_id in self.probes.keys():
+            # first prepare the file name
+            filename = os.path.join(self.result_path, 'PrepData', '{}_{}{}_pres{}s.pkl'.format(
+                probe_id, cond['cond_name'], int(cond['srate']),cond['prestim']))
+            # second load each probe and add it to the ROI list
+            self.probes[probe_id] = ProbeF.LFPprobe.from_file(filename)
+        self.loaded_cond =  cond['cond_name']
+
+    def layer_selection(self, Filename=None):
+        """
+        This will be done on the loaded_cond data
+        :return:
+        """
+        if Filename==None:
+            Filename = os.path.join(self.result_path,'PrepData','Cortical_Layers.xlsx')
+        try:
+            layer_table = pd.read_excel(Filename)
+            # set the layer names as index of the dataframe
+            layer_table.set_index('Layers', inplace=True)
+
+        except OSError:
+            # if the layer file did not exist then return with an error
+            print("Prepare the cortical layer files first as PrepData/Cortical_Layers.xlsx")
+            return
+
+        for probe_id in self.probes.keys():
+            print(probe_id)
+            channel_id = ProbeF.layer_selection(layer_table, probe_id, self.result_path)
+
+            # select the LFP of those channels, and relabel the xarray dimensions
+            self.probes[probe_id].Y = self.probes[probe_id].Y.sel(channel=channel_id.to_list())
+
         self.layer_selected = True
 
-## class method read/write the LFPSession from/to file
+
+def search_preproc(list_pre, dic_pre):
+    """
+    Search if the preprocessing with the current parameters has been run before
+    :param list_pre: self.preprocess
+    :param dic_pre: dictionary with new params
+    :return: The index of pre-processes with current params
+    """
+    result = []
+    for x in list_pre:
+        shared_items = [x[k] == dic_pre[k] for k in x if k in dic_pre]
+        result.append(sum(shared_items)==len(dic_pre))
+    return [i for i, x in enumerate(result) if x]
+    # maybe also searches if the files exist?

@@ -4,15 +4,22 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import lfp_functions as LFPF
 import scipy.signal as signal
-import scipy.io as sio
-import pickle
-
-
+import _pickle as cPickle
+import xarray as xr
 from allensdk.brain_observatory.ecephys.ecephys_project_cache import EcephysProjectCache
 from scipy.ndimage.filters import gaussian_filter
 
 
 def extract_probeinfo(session, lfp, probe_id, Resultspath, doRF):
+    """
+    extract the channels info of a probe including their ROI, their coordinates, their RF maps
+    :param session: session class from allensdk
+    :param lfp: lfp matrix from session.get_lfp
+    :param probe_id:
+    :param Resultspath: path to save the results
+    :param doRF: should the function run RF mapping?
+    :return: save the results in a binary format file
+    """
     structure_acronyms, intervals = session.channel_structure_intervals(lfp["channel"])
     interval_midpoints = [aa + (bb - aa) / 2 for aa, bb in zip(intervals[:-1], intervals[1:])]
 
@@ -36,15 +43,24 @@ def extract_probeinfo(session, lfp, probe_id, Resultspath, doRF):
     if not os.path.isdir(os.path.join(Resultspath, 'PrepData')):
         os.mkdir(os.path.join(Resultspath, 'PrepData'))
 
-    """sio.savemat(os.path.join(Resultspath, 'PrepData', '{}_ProbeInfo.mat'.format(probe_id)),
-                {'Coords': A.to_dict('list'), 'structure_acronyms': structure_acronyms, 'intervals': intervals,
-                 'RF_Results': rf_results})
-    """
     a_file = open(os.path.join(Resultspath,'PrepData','{}_ProbeInfo.pkl'.format(probe_id)), "wb")
-    pickle.dump({'Coords':A.to_dict('list'),'structure_acronyms':structure_acronyms,'intervals':intervals},a_file)
+    #cPickle.dump({'Coords':A.to_dict('list'),'structure_acronyms':structure_acronyms,'intervals':intervals},a_file)
+    cPickle.dump({'Coords': A, 'structure_acronyms': structure_acronyms, 'intervals': intervals}, a_file)
     a_file.close()
 
-def prepare_condition(session, lfp, probe_id, cond_name, Resultspath, Prestim, down_rate):
+
+def prepare_condition(session, session_id, lfp, probe_id, cond_name, Resultspath, Prestim, down_rate):
+    """
+    epoch the data and apply down-sampling
+    :param session: allensdk session
+    :param lfp: lfp matrix from session.get_lfp
+    :param probe_id:
+    :param cond_name: name of the condition to be processed
+    :param Resultspath: path to save the results
+    :param Prestim: pre-stimulus time window in seconds
+    :param down_rate: temporal down-sampling rate
+    :return: save the results in a binary format file and return the resulting sampling rate
+    """
     # sampling rate
     SRate = round(session.probes['lfp_sampling_rate'][session.probes.index.values == probe_id].values[0])
 
@@ -64,12 +80,12 @@ def prepare_condition(session, lfp, probe_id, cond_name, Resultspath, Prestim, d
     Times[Times.shape[0] - 1] = Times[Times.shape[0] - 2] * 2 - Times[Times.shape[0] - 3]
     lfp_cond = (results['lfp'])
 
-    # --------------------------MATLAB------------------------------
+    # --------------------------Output File------------------------------
     Times = results['time'].mean(axis=1)[:, 7]
     Times[Times.shape[0] - 1] = Times[Times.shape[0] - 2] * 2 - Times[Times.shape[0] - 3]
 
     lfp_cond = (results['lfp'])
-    if lfp_cond == 'flashes':
+    if cond_name == 'flashes':
         lfp_cond = LFPF.csd(LFPF.gaussian_filter_trials(lfp_cond, 1))  # just in case of flashes for layer assignment
     else:
         lfp_cond = LFPF.bipolar(lfp_cond)# LFPF.gaussian_filter_trials(lfp_cond, 1));
@@ -84,26 +100,41 @@ def prepare_condition(session, lfp, probe_id, cond_name, Resultspath, Prestim, d
     dSRate = SRate / down_rate
 
     # condition info
-    cnd_id = results['conditioninfo']
+    cnd_id = results['cnd_id']
     cnd_info = list(map(lambda x: presentations[presentations['stimulus_condition_id'] == x].iloc[0],
                         cnd_id))  # each condition info
     cnd_info = pd.concat(cnd_info, axis=1).transpose()
 
-    # save data
+    # save the data
     if not os.path.exists(os.path.join(Resultspath, 'PrepData')):
         os.mkdir(os.path.join(Resultspath, 'PrepData'))
-    """
-    sio.savemat(os.path.join(Resultspath, 'PrepData', '{}_{}{}.mat'.format(probe_id, cond_name, int(dSRate))),
-                {'Y': Y, 'Times': Times, 'srate': dSRate, 'cnd_info': cnd_info.to_dict("list"), 'cnd_id': cnd_id
-                    , 'ROI': structure_acronyms[structure_acronyms.shape[0] - 2]})
-    """
-    a_file = open(os.path.join(Resultspath, 'PrepData', '{}_{}{}.pkl'.format(probe_id, cond_name, int(dSRate))), "wb")
-    pickle.dump({'Y': Y, 'Times': Times, 'srate': dSRate, 'cnd_info': cnd_info.to_dict("list"), 'cnd_id': cnd_id
-                    , 'ROI': structure_acronyms[structure_acronyms.shape[0] - 2]}, a_file)
+
+    # convert to class?
+    LFPdata = LFPprobe(session_id,probe_id,structure_acronyms[structure_acronyms.shape[0] - 2],Y,dSRate, results['channel'], Times, cnd_id, cnd_info)
+
+    a_file = open(os.path.join(Resultspath, 'PrepData', '{}_{}{}_pres{}s.pkl'.format(probe_id, cond_name, int(down_rate),Prestim)), "wb")
+
+    cPickle.dump(LFPdata.__dict__, a_file)
     a_file.close()
+
+    """
+    cPikle.dump({'Y': Y, 'Times': Times, 'srate': dSRate, 'cnd_info': cnd_info.to_dict("list"), 'cnd_id': cnd_id
+                    , 'ROI': structure_acronyms[structure_acronyms.shape[0] - 2]}, a_file)
+                    
+    """
+    a_file.close()
+    return structure_acronyms[structure_acronyms.shape[0] - 2]
 
 
 def CSD_plots(session, lfp, probe_id, Resultspath):
+    """
+    Plots the CSD maps of only cortical areas for layer assignment. Uses Flashes condition
+    :param session: allenssdk session object
+    :param lfp: lfp matrix from session.get_lfp
+    :param probe_id:
+    :param Resultspath: path to save the figures
+    :return:
+    """
     # --------------------------------------------------------
     # In case you want to check the original csd, run this:
     csd = session.get_current_source_density(probe_id)
@@ -121,7 +152,7 @@ def CSD_plots(session, lfp, probe_id, Resultspath):
     interval_midpoints = [aa + (bb - aa) / 2 for aa, bb in zip(intervals[:-1], intervals[1:])]
     plt.title(structure_acronyms[structure_acronyms.shape[0] - 2])
     fig.savefig('{}/Probe_{}_CSD_original.png'.format(Resultspath, probe_id), dpi=300)
-
+    plt.close()
     # ------------------THIS IS FOR FLASHES CONDITION-----------
     # -compute CSD of the flashes condition
     presentations = session.get_stimulus_table('flashes')
@@ -131,10 +162,10 @@ def CSD_plots(session, lfp, probe_id, Resultspath):
     results = LFPF.organize_epoch(lfp, presentations, Prestim, 0)
 
     # -Prepare Variables-
-    CI = np.array(results['conditioninfo'])
+    CI = np.array(results['cnd_id'])
     CI = pd.DataFrame(CI, columns=['CID'])['CID']
     lfp_cond = (results['lfp'])
-    lfp_cond = lfp_cond[55:80]  # intervals[intervals.shape[0]-3]:intervals[intervals.shape[0]-2]+1];
+    lfp_cond = lfp_cond[intervals[intervals.shape[0]-3]:intervals[intervals.shape[0]-2]]
     # lfp_cond = LFPF.bipolar(LFPF.gaussian_filter_trials(lfp_cond, 1));
     lfp_cond = LFPF.csd(LFPF.gaussian_filter_trials(lfp_cond, 1))
     Time = results['time'].mean(axis=1)
@@ -168,7 +199,7 @@ def CSD_plots(session, lfp, probe_id, Resultspath):
         ax.set_xlim([0, min(np.argwhere(np.isnan(TimeWin)))])
         ax.plot([ZeroPoint, ZeroPoint], [0, lfp_cond.shape[0]], 'w--')
         # -TitleAndColormap-
-        ax.set_title('Condition #{}'.format(CI.unique()[Cnd]))
+        ax.set_title('Cond#{}-{}'.format(CI.unique()[Cnd],structure_acronyms[structure_acronyms.shape[0] - 2]))
         # fig.set_clim(-1,1)
         cbar = fig.colorbar(p, ax=ax)  # format=ticker.FuncFormatter(fmt))
         cbar.formatter.set_powerlimits((0, 0))
@@ -181,21 +212,28 @@ def CSD_plots(session, lfp, probe_id, Resultspath):
     fig.savefig('{}/Probe_{}_flashes_csd.png'.format(Resultspath, probe_id), dpi=300)
     plt.close()
 
+
 def RF_mapping_plot(session, lfp, probe_id, doplot, Resultspath):
-    # THIS IS RF MAPPING USING GABORS
+    """
+    THIS IS RF MAPPING USING GABORS condition
+    :param session:
+    :param lfp:
+    :param probe_id:
+    :param doplot:
+    :param Resultspath:
+    :return:
+    """
 
     presentations = session.get_stimulus_table('gabors')
     CI = presentations['stimulus_condition_id']
     Prestim = .0  # prestimulus time in sec, Notes: there is no ISI for gabors condition
     results = LFPF.organize_epoch(lfp, presentations, Prestim, 0)
 
-    cnd_id = results['conditioninfo']
+    cnd_id = results['cnd_id']
     cnd_info = list(map(lambda x: presentations[presentations['stimulus_condition_id'] == x].iloc[0],
                         cnd_id))  # each condition info
     cnd_info = pd.concat(cnd_info, axis=1).transpose()
-
     Data_final = np.zeros([min(lfp.shape), 3, 9, 9])
-
 
     for E in range(0, min(lfp.shape)):
         if E % 5 == 0: print(E)
@@ -224,3 +262,60 @@ def RF_mapping_plot(session, lfp, probe_id, doplot, Resultspath):
         return {'Data': Data_final, 'CondInfo': cnd_info.to_dict('list'), 'CondOrganized': Results2['CondInfo']}
     else:
         return {'Data': Data_final, 'CondInfo': cnd_info.to_dict('list'), 'CondOrganized': Results2['CondInfo']}
+
+
+def layer_selection(layer_table, probe_id, result_path):
+
+    # read the probe info and return error if do not find any
+    file = open(os.path.join(result_path,'PrepData','{}_ProbeInfo.pkl'.format(probe_id)), "rb")
+    dataPickle = file.read()
+    file.close()
+    probe_info = cPickle.loads(dataPickle)
+
+    # indicate layers channel ids and return them
+    Coord = probe_info['Coords']
+    Coord.sort_values('id', inplace=True,ascending=True)
+    Coord.reset_index(inplace=True)
+
+    # select structure acronym: find the one starts with VIs?
+    # Attention: indexing is should be -1
+    Ind_area = range(probe_info['intervals'][-2]-1,probe_info['intervals'][-3]-1,-1)
+
+    # reverse order and apply the layers:
+    channel_ids = Coord['id'].loc[Ind_area] # select only VISp area
+    layer_table['P{}'.format(probe_id)]
+    Ind_layers = layer_table['P{}'.format(probe_id)].loc[['L{}'.format(x) for x in range(1,7)]]-1
+
+    #return the channels ids
+    return channel_ids.iloc[Ind_layers]
+
+
+class LFPprobe(object):
+
+    def __init__(self, session_id, probe_id, ROI, Y, srate, channels=None, time=None, cnd_id=None, cnd_info=None):
+        """
+
+        :param ID: Probe ID
+        :param ROI: ROI name
+        :param Y: trial x channel x time x cnd
+        :param srate: sampling rate
+        """
+        self.session_id = session_id
+        self.probe_id = probe_id
+        self.ROI = ROI
+        if isinstance(Y,np.ndarray):
+            Y = xr.DataArray(Y, dims=['trial','channel', 'time', 'cnd_id'],
+                              coords=dict(trial=range(0, 75),channel=channels, time=time, cnd_id=cnd_id))
+        self.Y = Y
+        self.srate = srate
+        self.cnd_info = cnd_info
+
+    @classmethod # Alternative constructor: read from file
+    def from_file(cls, filename):
+        with open(filename, "rb") as file:
+            dataPickle = file.read()
+            file.close()
+
+        Arg_dict = cPickle.loads(dataPickle)
+
+        return cls(**Arg_dict)

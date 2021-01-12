@@ -4,9 +4,18 @@
 import numpy as np
 import pandas as pd
 from scipy.ndimage.filters import gaussian_filter
+import xarray as xr
 
 
 def RF_mapping(results, presentations, TW, Units):
+    """
+    This function plot RF maps (does not do the statistical RF mapping based on permutations)
+    :param results:
+    :param presentations:
+    :param TW:
+    :param Units:
+    :return:
+    """
     # First find the time index of interest
     T = results['time'].mean(axis=1).mean(axis=1) * 1000  # time in miliseconds
     Tind = np.where((T > TW[0]) & (T < TW[1]))[0]
@@ -15,7 +24,7 @@ def RF_mapping(results, presentations, TW, Units):
     lfp_cond = bipolar(lfp_cond)
     # BaseL = abs(lfp_cond[:, Tind2, :, :].mean(axis=2)).mean(axis=1)
     lfp_cond = abs(lfp_cond[:, Tind, :, :].mean(axis=2)).mean(axis=1)
-    cnd_id = results['conditioninfo']
+    cnd_id = results['cnd_id']
 
     PC = presentations[['orientation', 'x_position', 'y_position', 'stimulus_condition_id']]
 
@@ -67,13 +76,19 @@ def organize_epoch(lfp, presentations, prestim=.5, poststim=.0):
         Cond_id.append(CI.unique()[Cnd])
         PC = presentations[CI == CI.unique()[Cnd]]
         for Ind in range(0, len(PC)): #CI.value_counts().array[Cnd]):
+            Ind
             TW = np.logical_and(lfp['time'].values > (PC['start_time'].array[Ind] - prestim),
                                 lfp['time'].values < (PC['stop_time'].array[Ind] + poststim))
             lfp_cond[:, 0:lfp[{"time": TW}].T.shape[1], Ind, Cnd] = lfp[
                 {"time": TW}].T  # sometimes the trial lengths are different
             time[0:lfp[{"time": TW}].T.shape[1], Ind, Cnd] = lfp["time"][TW].values - PC['start_time'].array[Ind]
     lfp_cond[0, :, :, :] = 0
-    return {'lfp': lfp_cond, 'conditioninfo': Cond_id, 'time': time}
+    #lfp_cond2 = xr.DataArray(lfp_cond, dims=['channel', 'time', 'trial', 'cnd_id'],
+    #                         coords=dict(channel=lfp['channel'], time=time.mean(axis=2).mean(axis=1), trial=range(0, 75), cnd_id=Cond_id))
+    Channels = np.array(lfp.get_index('channel'))
+    Channels.sort(axis=0)
+
+    return {'lfp': lfp_cond, 'cnd_id': Cond_id, 'time': time, 'channel':Channels}
 
 
 def bipolar(lfp, axis=0):
@@ -86,7 +101,7 @@ def bipolar(lfp, axis=0):
     lfp2[2:sizes[axis], :, :, :] = lfp
     lfp_out = lfp2 - lfp1
     lfp_out = lfp_out[1:sizes[axis] - 1, :, :, :]
-    return lfp_out
+    return lfp_out # return an
 
 
 def csd(lfp, axis=0):
