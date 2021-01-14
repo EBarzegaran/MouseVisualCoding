@@ -3,17 +3,24 @@ import os
 import MouseVisCode.probe_functions as ProbeF
 import _pickle as cPickle
 import pandas as pd
-
+import numpy as np
+from functools import reduce
+import dynet_statespace as dsspace
+import dynet_con as dcon
+import xarray as xr
 
 class LFPSession(object):
     """
     Class to access, store, and retrieve LFP session data, apply pre-processing and estimate iPDC
-    ------------------------------------------------------------------------
-    ------------------------------------------------------------------------
     """
 
     def __init__(self,cache,session_id,result_path):
-
+        """
+        Initialize the class based on AllenBrainSDK session
+        :param cache: cache from EcephysProjectCache.from_warehouse(manifest=manifest_path)
+        :param session_id: ID for allenSDK session
+        :param result_path: Path to save the results
+        """
         self.session_id = session_id
 
         # Add the resultpath folder for this session #### be careful about this variable when saving and loading (both Paths)
@@ -38,6 +45,10 @@ class LFPSession(object):
 
     ## Class methods read/write the LFPSession from/to file (note: only preprocessing info is important)
     def save_session(self):
+        """
+        Saves session and preprocessing information to a .obj file using cPickle
+        :return: file path/name
+        """
         filename = os.path.join(self.result_path, 'LFPSession_{}.obj'.format(self.session_id))
         filehandler = open(filename, "wb")
         # Do not save the loaded LFP matrices since they are too big
@@ -47,6 +58,7 @@ class LFPSession(object):
         temp.layer_selected = False
         cPickle.dump(temp.__dict__, filehandler)
         filehandler.close()
+        return filename
 
     def load_session(self): # be careful about this -> result_path
         filename = os.path.join(self.result_path, 'LFPSession_{}.obj'.format(self.session_id))
@@ -59,21 +71,21 @@ class LFPSession(object):
         return str(self.__dict__).replace(", '", ",\n '")
 
     ## Processing methods
-    def preprocessing(self,cond_name='drifting_gratings', down_sample_rate=5, Prestim = 1, do_RF=False, do_CSD=False, do_probe=False):
+    def preprocessing(self,cond_name='drifting_gratings', down_sample_rate=5, pre_stim = 1, do_RF=False, do_CSD=False, do_probe=False):
         """
         Runs the preprocessing on the session with the input parameters, if it has not been run before.
 
         :param cond_name: condition name to be preprocessed
         :param do_RF: do receptive field mapping plots? Attention: this may take a while if set True, note it is not RF mappning based on permutation
         :param down_sample_rate:
-        :param Prestim: prestimulus time in sec
+        :param pre_stim: prestimulus time in sec
         :return:
         """
         # first indicate if the
         preproc_dic = {
             'cond_name': cond_name,
             'srate': down_sample_rate,
-            'prestim': Prestim,
+            'prestim': pre_stim,
             }
         #'layer_selected':False# include in the file name
 
@@ -98,7 +110,7 @@ class LFPSession(object):
 
                 # Extract and prepare the data for a condition
                 if cond_name is not None:
-                    ROI = ProbeF.prepare_condition(self.session, self.session_id, lfp, probe_id, cond_name, self.result_path, Prestim,down_sample_rate)
+                    ROI = ProbeF.prepare_condition(self.session, self.session_id, lfp, probe_id, cond_name, self.result_path, pre_stim,down_sample_rate)
                     self.ROIs[ROI] = probe_id
 
             # Add the pre-process params as a dictionary to the list of preprocessed data
@@ -146,6 +158,78 @@ class LFPSession(object):
 
         self.layer_selected = True
 
+    def pdc_analysis(self, ROI_list=None, Mord=10, ff=.99, pdc_method='iPDC', stim_params=None, Freqs=np.array(range(1, 101))):
+        """
+        Calculates time- and frequency-resolved functional connectivity between the LFP signals based on STOK algorithm
+        :param ROI_list: list of ROIs to be considered for this analysis
+        :param Mord: Model order for ARMA model
+        :param ff: filter factor between 0 and 1
+        :param pdc_method: check the pydynet toolbox for that
+        :param stim_params: Parameters of stimulus to be used to pool the data
+        :param Freqs: a numpy array uncluding the Frequencies for connectivity analysis
+        :return:
+        """
+        if ROI_list is None:
+            ROI_list = ['VISp']
+        if stim_params is None:
+            stim_params = []
+
+        # select the conditions and pool their trials together
+        Y = {} # to prepare the data for PDC analysis
+        Srate = {} # to make sure that Srates match
+        ROI_labels = []
+        channel_ids = []
+        probe_ids = []
+        for ROI in ROI_list:
+            if ROI in self.ROIs.keys():
+                probe_id = self.ROIs[ROI]
+                cnd_info = self.probes[probe_id].cnd_info
+                Cnds_inds = []
+                for k in stim_params.keys():
+                    Cnds = [cnd_info[k] == x for x in stim_params[k]]
+                    if len(Cnds)>1:
+                        Cnds_temp = reduce((lambda x, y: np.logical_or(x,y)), [c.to_numpy() for c in Cnds])
+                        Cnds_inds.append(Cnds_temp)
+                    else:
+                        Cnds_inds.append(Cnds)
+                Cnds_final = reduce((lambda x, y: np.logical_and(x,y)), Cnds_inds)
+                Cnds_inds_final = cnd_info['stimulus_condition_id'].to_numpy()[Cnds_final.squeeze()]
+
+                # Prepare for output
+                Y[ROI] = self.probes[probe_id].Y.sel(cnd_id=Cnds_inds_final)
+                Srate[ROI] = self.probes[probe_id].srate
+                ROI_labels.append(['{}_L{}'.format(ROI,i) for i in range(1,7)])
+                channel_ids.append(Y[ROI].channel.values)
+                probe_ids.append([probe_id for l in range(1,7)])
+
+        # pull together and ROI-layer index
+        srate = np.unique(np.array(list(Srate.values())))
+        if len(srate) != 1:
+            print("Sampling rates do not match between probes, please check the preprocessing!")
+            return
+
+        # Put the data from all ROIs together for PDC calculations
+        Y_temp = np.concatenate(list(Y.values()), axis=1) # second dimension is the channels
+        Y_temp = np.moveaxis(Y_temp, -1, 0)
+        YS = list(Y_temp.shape)
+        Y_pooled = Y_temp.reshape([YS[0]*YS[1],YS[2],YS[3]])
+
+        # iPDC matrix
+        KF = dsspace.dynet_SSM_STOK(Y_pooled, p=Mord, ff=ff)
+        iPDC = dcon.dynet_ar2pdc(KF, srate, Freqs, metric=pdc_method, univ=1, flow=2)
+        # iPDC to xarray
+        Time = Y['VISp'].time.values
+        ROI_ls = np.array(ROI_labels).reshape(np.prod(np.array(ROI_labels).shape))
+        iPDC_xr = xr.DataArray(iPDC, dims=['source', 'target', 'freq' , 'time'],
+                         coords=dict(source= ROI_ls, target= ROI_ls, freq=Freqs, time=Time))
+        # ROIs for output
+        ROIs = list(Y.keys())
+        chnl_ids = np.array(channel_ids).reshape(np.prod(np.array(channel_ids).shape))
+        prb_ids = np.array(probe_ids).reshape(np.prod(np.array(probe_ids).shape))
+
+        # save?
+        return {'session_id':self.session_id, 'KF': KF, 'ROIs': ROIs, 'PDC': iPDC_xr,
+                'probe_info': {'probe_ids': prb_ids, 'channel_ids': chnl_ids}}
 
 def search_preproc(list_pre, dic_pre):
     """
