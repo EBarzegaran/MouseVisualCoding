@@ -57,9 +57,15 @@ def organize_epoch(lfp, presentations, prestim=.5, poststim=.0):
     """
     This function get the lfp (numpy data array) and epoch the data for a specific condition/conditions
     """
-    # find optimum time window length for epoching the data
+
     PC = presentations
-    CI = presentations['stimulus_condition_id']
+    #CI = presentations['stimulus_condition_id']
+
+    # remove the null conditions
+    CI = presentations[presentations['contrast'] != 'null']['stimulus_condition_id']
+    presentations2 = presentations[presentations['contrast'] != 'null']
+
+    # find optimum time window length for epoching the data
     tw = []
     for i in range(0, len(CI)):
         # print(i)
@@ -74,7 +80,7 @@ def organize_epoch(lfp, presentations, prestim=.5, poststim=.0):
     for Cnd in range(0, CI.nunique()):
         if Cnd % 10 == 0: print(Cnd)
         Cond_id.append(CI.unique()[Cnd])
-        PC = presentations[CI == CI.unique()[Cnd]]
+        PC = presentations2[CI == CI.unique()[Cnd]]
         for Ind in range(0, len(PC)): #CI.value_counts().array[Cnd]):
             Ind
             TW = np.logical_and(lfp['time'].values > (PC['start_time'].array[Ind] - prestim),

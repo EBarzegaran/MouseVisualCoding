@@ -82,14 +82,15 @@ class LFPSession(object):
         :return:
         """
         # first indicate if the
-        preproc_dic = {
+        preproc_dict = {
             'cond_name': cond_name,
             'srate': down_sample_rate,
             'prestim': pre_stim,
             }
-        #'layer_selected':False# include in the file name
 
-        if not search_preproc(self.preprocess,preproc_dic):
+        # Attention: remove the zero conditions
+
+        if not search_preproc(self.preprocess,preproc_dict):
 
             for probe_id in self.probes.keys():
 
@@ -102,7 +103,7 @@ class LFPSession(object):
                     self.RF = True
                 elif not self.RF or do_probe:
                     ProbeF.extract_probeinfo(self.session, lfp, probe_id, self.result_path, False)
-                    self.RF = True
+
 
                 # CSD plot for the probe
                 if (not self.CSD) and do_CSD:
@@ -115,15 +116,29 @@ class LFPSession(object):
 
             # Add the pre-process params as a dictionary to the list of preprocessed data
             if cond_name is not None:
-                self.preprocess.append(preproc_dic)
+                self.preprocess.append(preproc_dict)
 
             if (not self.CSD) and do_CSD:
                 self.CSD = True
 
+            if not self.RF or do_probe:
+                self.RF = True
+
             # Save the session after preprocessing
             self.save_session()
 
-    def load_LFPprobes(self, cond):
+    def load_LFPprobes(self, cond_dict):
+        """
+        loads in the preprocessed LFP signal
+        :param cond_dict: a dictionary with the preprocessing params
+        :return: Updates the self.probes values
+        """
+        preprocess_ind = search_preproc(self.preprocess, cond_dict)
+        if not preprocess_ind: # checks if the condition is previously run
+            print("no preprocessing with these parameters is done")
+            return
+
+        cond = self.preprocess[preprocess_ind[0]]
         for probe_id in self.probes.keys():
             # first prepare the file name
             filename = os.path.join(self.result_path, 'PrepData', '{}_{}{}_pres{}s.pkl'.format(
@@ -154,7 +169,10 @@ class LFPSession(object):
             channel_id = ProbeF.layer_selection(layer_table, probe_id, self.result_path)
 
             # select the LFP of those channels, and relabel the xarray dimensions
-            self.probes[probe_id].Y = self.probes[probe_id].Y.sel(channel=channel_id.to_list())
+            if len(channel_id) > 0:
+                self.probes[probe_id].Y = self.probes[probe_id].Y.sel(channel=channel_id.to_list())
+            else:
+                self.probes[probe_id].Y = []
 
         self.layer_selected = True
 
@@ -192,7 +210,7 @@ class LFPSession(object):
                         Cnds_inds.append(Cnds_temp)
                     else:
                         Cnds_inds.append(Cnds)
-                Cnds_final = reduce((lambda x, y: np.logical_and(x,y)), Cnds_inds)
+                Cnds_final = np.array(reduce((lambda x, y: np.logical_and(x,y)), Cnds_inds))
                 Cnds_inds_final = cnd_info['stimulus_condition_id'].to_numpy()[Cnds_final.squeeze()]
 
                 # Prepare for output
@@ -212,7 +230,11 @@ class LFPSession(object):
         Y_temp = np.concatenate(list(Y.values()), axis=1) # second dimension is the channels
         Y_temp = np.moveaxis(Y_temp, -1, 0)
         YS = list(Y_temp.shape)
-        Y_pooled = Y_temp.reshape([YS[0]*YS[1],YS[2],YS[3]])
+        Y_pool = Y_temp.reshape([YS[0]*YS[1], YS[2], YS[3]])
+        # remove possible zero values (trials)
+        nzero_trl = Y_pool[:, :, 10] != 0
+        nzero_trl_ind = reduce((lambda x, y: np.logical_or(x, y)), nzero_trl.transpose())
+        Y_pooled = Y_pool[nzero_trl_ind,:,:]
 
         # iPDC matrix
         KF = dsspace.dynet_SSM_STOK(Y_pooled, p=Mord, ff=ff)

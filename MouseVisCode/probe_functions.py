@@ -76,12 +76,11 @@ def prepare_condition(session, session_id, lfp, probe_id, cond_name, Resultspath
     results = LFPF.organize_epoch(lfp, presentations, prestim=Prestim, poststim=.0)
     # structure_acronyms[structure_acronyms.shape[0] - 2]
 
-    Times = results['time'].mean(axis=1)[:, 7]
-    Times[Times.shape[0] - 1] = Times[Times.shape[0] - 2] * 2 - Times[Times.shape[0] - 3]
-    lfp_cond = (results['lfp'])
-
     # --------------------------Output File------------------------------
-    Times = results['time'].mean(axis=1)[:, 7]
+    #Times = results['time'].mean(axis=1)[:, 0]
+    Time_nanzero = np.nansum(results['time'], axis=0) != 0
+    Times = [np.mean(results['time'][:, Time_nanzero[:, x], x], axis=1) for x in range(0, Time_nanzero.shape[1])][0]
+
     Times[Times.shape[0] - 1] = Times[Times.shape[0] - 2] * 2 - Times[Times.shape[0] - 3]
 
     lfp_cond = (results['lfp'])
@@ -104,6 +103,7 @@ def prepare_condition(session, session_id, lfp, probe_id, cond_name, Resultspath
     cnd_info = list(map(lambda x: presentations[presentations['stimulus_condition_id'] == x].iloc[0],
                         cnd_id))  # each condition info
     cnd_info = pd.concat(cnd_info, axis=1).transpose()
+
 
     # save the data
     if not os.path.exists(os.path.join(Resultspath, 'PrepData')):
@@ -147,9 +147,8 @@ def CSD_plots(session, lfp, probe_id, Resultspath):
     ax.set_xlabel("time relative to stimulus onset (s)", fontsize=20)
     ax.set_ylabel("vertical position (um)", fontsize=20)
 
-    # plt.show()
     structure_acronyms, intervals = session.channel_structure_intervals(lfp["channel"])
-    interval_midpoints = [aa + (bb - aa) / 2 for aa, bb in zip(intervals[:-1], intervals[1:])]
+    #interval_midpoints = [aa + (bb - aa) / 2 for aa, bb in zip(intervals[:-1], intervals[1:])]
     plt.title(structure_acronyms[structure_acronyms.shape[0] - 2])
     fig.savefig('{}/Probe_{}_CSD_original.png'.format(Resultspath, probe_id), dpi=300)
     plt.close()
@@ -165,13 +164,19 @@ def CSD_plots(session, lfp, probe_id, Resultspath):
     CI = np.array(results['cnd_id'])
     CI = pd.DataFrame(CI, columns=['CID'])['CID']
     lfp_cond = (results['lfp'])
-    lfp_cond = lfp_cond[intervals[intervals.shape[0]-3]:intervals[intervals.shape[0]-2]]
-    # lfp_cond = LFPF.bipolar(LFPF.gaussian_filter_trials(lfp_cond, 1));
     lfp_cond = LFPF.csd(LFPF.gaussian_filter_trials(lfp_cond, 1))
-    Time = results['time'].mean(axis=1)
 
-    intervals2 = intervals
-    intervals2[intervals2 < 0] = 0
+    # -test the intervals-
+    VISs = [x.find('VIS') for x in [str(x) for x in structure_acronyms]]
+    VIS_ind = np.where(np.array(VISs) == 0)[0]
+    lfp_cond = lfp_cond[intervals[VIS_ind.min()]:intervals[VIS_ind.max()+1]]
+
+    #lfp_cond = lfp_cond[intervals[intervals.shape[0] - 3]:intervals[intervals.shape[0] - 2]]
+
+    # -remove trials with nan values as time-
+    Time_nanzero = np.nansum(results['time'],axis=0) != 0
+    Time = [np.mean(results['time'][:,Time_nanzero[:,x],x],axis=1) for x in range(0,Time_nanzero.shape[1])]
+
     # -Figure configs-
     fig, axs = plt.subplots(1, 2)
     fig.set_size_inches(15, 5)
@@ -180,10 +185,10 @@ def CSD_plots(session, lfp, probe_id, Resultspath):
     # ---
     Ma = []
     for Cnd in np.array(range(CI.nunique() - 1, -1, -1)):  # range(0,CI.nunique()):
-        TimeWin = Time[:, Cnd]
+        TimeWin = Time[Cnd]
         ZeroPoint = abs(TimeWin[~np.isnan(TimeWin)] - .0).argmin()
         ax = axs[Cnd]
-        lfp_cond_M = np.nanmean(lfp_cond[:, :, :, Cnd], axis=2)
+        lfp_cond_M = np.nanmean(lfp_cond[:, :, Time_nanzero[:,Cnd], Cnd], axis=2)
         # -Plot-
         p = ax.pcolormesh(lfp_cond_M)
         # -Ytick-
@@ -199,7 +204,7 @@ def CSD_plots(session, lfp, probe_id, Resultspath):
         ax.set_xlim([0, min(np.argwhere(np.isnan(TimeWin)))])
         ax.plot([ZeroPoint, ZeroPoint], [0, lfp_cond.shape[0]], 'w--')
         # -TitleAndColormap-
-        ax.set_title('Cond#{}-{}'.format(CI.unique()[Cnd],structure_acronyms[structure_acronyms.shape[0] - 2]))
+        ax.set_title('Cond#{}-{}-{}'.format(CI.unique()[Cnd],structure_acronyms[structure_acronyms.shape[0] - 2],len(VIS_ind)))
         # fig.set_clim(-1,1)
         cbar = fig.colorbar(p, ax=ax)  # format=ticker.FuncFormatter(fmt))
         cbar.formatter.set_powerlimits((0, 0))
@@ -265,7 +270,13 @@ def RF_mapping_plot(session, lfp, probe_id, doplot, Resultspath):
 
 
 def layer_selection(layer_table, probe_id, result_path):
-
+    """
+    Select 6 cortical layers based on manual labels in a XLSX file
+    :param layer_table: loaded xlsx table in form of a dataframe
+    :param probe_id: the probe in that session
+    :param result_path: Path to session, to load probe information
+    :return: the channel IDs of six layers for that probe
+    """
     # read the probe info and return error if do not find any
     file = open(os.path.join(result_path,'PrepData','{}_ProbeInfo.pkl'.format(probe_id)), "rb")
     dataPickle = file.read()
@@ -279,19 +290,26 @@ def layer_selection(layer_table, probe_id, result_path):
 
     # select structure acronym: find the one starts with VIs?
     # Attention: indexing is should be -1
-    Ind_area = range(probe_info['intervals'][-2]-1,probe_info['intervals'][-3]-1,-1)
+    #Ind_area = range(probe_info['intervals'][-2]-1,probe_info['intervals'][-3]-1,-1)
+    VISs = [x.find('VIS') for x in [str(x) for x in probe_info['structure_acronyms']]] # in case of fragmented ROI
+    VIS_ind = np.where(np.array(VISs) == 0)[0]
+    Ind_area = range(probe_info['intervals'][VIS_ind.max() + 1]-1,probe_info['intervals'][VIS_ind.min()]-1,-1)
 
     # reverse order and apply the layers:
     channel_ids = Coord['id'].loc[Ind_area] # select only VISp area
-    layer_table['P{}'.format(probe_id)]
     Ind_layers = layer_table['P{}'.format(probe_id)].loc[['L{}'.format(x) for x in range(1,7)]]-1
 
     #return the channels ids
-    return channel_ids.iloc[Ind_layers]
+    if np.isnan(Ind_layers).to_numpy().sum() == 0:
+        return channel_ids.iloc[Ind_layers]
+    else:
+        return []
 
 
 class LFPprobe(object):
-
+    """
+    A class to store the LFPs of each probe
+    """
     def __init__(self, session_id, probe_id, ROI, Y, srate, channels=None, time=None, cnd_id=None, cnd_info=None):
         """
 
@@ -304,9 +322,10 @@ class LFPprobe(object):
         self.probe_id = probe_id
         self.ROI = ROI
         if isinstance(Y,np.ndarray):
-            Y = xr.DataArray(Y, dims=['trial','channel', 'time', 'cnd_id'],
-                              coords=dict(trial=range(0, 75),channel=channels, time=time, cnd_id=cnd_id))
-        self.Y = Y
+            self.Y = xr.DataArray(Y, dims=['trial','channel', 'time', 'cnd_id'],
+                              coords=dict(trial=range(0, Y.shape[0]),channel=channels, time=time, cnd_id=cnd_id))
+        else:
+            self.Y = Y
         self.srate = srate
         self.cnd_info = cnd_info
 
