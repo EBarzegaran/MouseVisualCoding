@@ -7,4 +7,4 @@ You need to first install Allen SDK: https://allensdk.readthedocs.io/en/latest/i
 
 For Functional connectivity analysis you will need pydynet toolbox: https://github.com/joanrue/pydynet
 
-For more details, refer to [https://github.com/EBarzegaran/MouseVisualCoding/wiki/Functional_connectivity_Analysis](Wiki)
+For more details, refer to [Wiki](https://github.com/EBarzegaran/MouseVisualCoding/wiki/Functional_connectivity_Analysis)
