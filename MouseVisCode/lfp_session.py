@@ -8,6 +8,7 @@ from functools import reduce
 import dynet_statespace as dsspace
 import dynet_con as dcon
 import xarray as xr
+import json
 
 class LFPSession(object):
     """
@@ -176,7 +177,7 @@ class LFPSession(object):
 
         self.layer_selected = True
 
-    def pdc_analysis(self, ROI_list=None, Mord=10, ff=.99, pdc_method='iPDC', stim_params=None, Freqs=np.array(range(1, 101))):
+    def pdc_analysis(self, ROI_list=None, Mord=10, ff=.99, pdc_method='iPDC', stim_params=None, Freqs=np.array(range(1, 101)), preproc_params=None):
         """
         Calculates time- and frequency-resolved functional connectivity between the LFP signals based on STOK algorithm
         :param ROI_list: list of ROIs to be considered for this analysis
@@ -191,6 +192,30 @@ class LFPSession(object):
             ROI_list = ['VISp']
         if stim_params is None:
             stim_params = []
+
+        #----------------------------------------------------------------------------
+        # Check if the PDC exist, just load it
+        # analysis params
+        PDCparam_dict = {
+            'ROI_list': ROI_list,
+            'Mord': Mord,
+            'ff': ff,
+            'pdc_method': pdc_method,
+            'stim_param': stim_params
+        }
+
+        filename = search_PDC(self.session_id, self.result_path, PDCparam_dict,preproc_params)
+        if os.path.isfile(filename):
+            # load the file and return it
+            file = open(filename, 'rb')
+            PDC_dict = cPickle.load(file)
+            file.close()
+            return PDC_dict
+
+        #----------------------------------------------------------------------------
+        # load the preprocessed LFPs and down sample spatially by selecting 6 layers
+        self.load_LFPprobes(preproc_params)
+        self.layer_selection()
 
         # select the conditions and pool their trials together
         Y = {} # to prepare the data for PDC analysis
@@ -231,10 +256,11 @@ class LFPSession(object):
         Y_temp = np.moveaxis(Y_temp, -1, 0)
         YS = list(Y_temp.shape)
         Y_pool = Y_temp.reshape([YS[0]*YS[1], YS[2], YS[3]])
-        # remove possible zero values (trials)
+        # remove possible zero and NaN values (trials)
         nzero_trl = Y_pool[:, :, 10] != 0
         nzero_trl_ind = reduce((lambda x, y: np.logical_or(x, y)), nzero_trl.transpose())
-        Y_pooled = Y_pool[nzero_trl_ind,:,:]
+        nNan_trl_ind = np.isnan(Y_pool).sum(axis=2).sum(axis=1) == 0
+        Y_pooled = Y_pool[nzero_trl_ind & nNan_trl_ind, :, :]
 
         # iPDC matrix
         KF = dsspace.dynet_SSM_STOK(Y_pooled, p=Mord, ff=ff)
@@ -249,9 +275,15 @@ class LFPSession(object):
         chnl_ids = np.array(channel_ids).reshape(np.prod(np.array(channel_ids).shape))
         prb_ids = np.array(probe_ids).reshape(np.prod(np.array(probe_ids).shape))
 
+        # save and return the output
+        PDC_dict = {'session_id':self.session_id, 'KF': KF, 'ROIs': ROIs, 'PDC': iPDC_xr,
+                'probe_info': {'probe_ids': prb_ids, 'channel_ids': chnl_ids}, 'PDCparam_dict': PDCparam_dict, 'preproc_dict': preproc_params}
+
+        save_PDC(PDC_dict, self.result_path)
+
         # save?
-        return {'session_id':self.session_id, 'KF': KF, 'ROIs': ROIs, 'PDC': iPDC_xr,
-                'probe_info': {'probe_ids': prb_ids, 'channel_ids': chnl_ids}}
+        return PDC_dict
+
 
 def search_preproc(list_pre, dic_pre):
     """
@@ -266,3 +298,33 @@ def search_preproc(list_pre, dic_pre):
         result.append(sum(shared_items)==len(dic_pre))
     return [i for i, x in enumerate(result) if x]
     # maybe also searches if the files exist?
+
+
+def save_PDC(PDC_dict, path):
+
+    preproc_params = PDC_dict['preproc_dict']
+    PDC_params = PDC_dict['PDCparam_dict']
+
+    filename = search_PDC(PDC_dict['session_id'], path, PDC_params, preproc_params)
+    # save the iPDCs and the parameters used as a dictionary
+    filehandler = open(filename, "wb")
+    cPickle.dump(PDC_dict, filehandler)
+    filehandler.close()
+
+    return filename
+
+
+def search_PDC(session_id, result_path, PDCparams ,preproc_dict):
+
+    results = json.dumps(PDCparams['stim_param'])
+    stim = ""
+    for character in results:
+        if character not in ['{', '}', ']', '[', ':', '"', ' ']:
+            stim += character
+    stim = stim.replace(',', '_')
+
+    filename = os.path.join(result_path,'{}_{}_sr{}_prestim{}_Mord{}_ff{}_{}_{}.pkl'.format(
+        session_id, preproc_dict['cond_name'], preproc_dict['srate'], preproc_dict['prestim'],
+        PDCparams['Mord'], PDCparams['ff'], PDCparams['pdc_method'], stim))
+
+    return filename

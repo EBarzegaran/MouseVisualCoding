@@ -23,7 +23,7 @@ session_id1 = [732592105, 737581020, 739448407, 742951821, 743475441, 744228101,
                759883607, 761418226, 763673393, 799864342]
 """
 
-session_id1 = [737581020, 739448407, 742951821, 744228101,
+session_id1 = [732592105, 737581020, 739448407, 742951821, 744228101,
                750749662, 754312389, 754829445, 757216464, 757970808,
                759883607, 761418226, 799864342]
 
@@ -46,8 +46,6 @@ for s_id in session_id1:
     # apply preprocessing: only load if preprocessing is done before
     LFP.preprocessing(cond_name=cond_name, down_sample_rate=down_sample_rate, pre_stim=pre_stim, do_RF=False, do_CSD=True, do_probe=False)
 
-    LFP.load_LFPprobes(preproc_dict)
-    LFP.layer_selection()
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -57,17 +55,6 @@ session_id2 = [766640955, 767871931, 768515987, 771160300, 771990200,
 
 # parameters for epoching
 cond_name = 'drifting_gratings_75_repeats'  # condition for iPDC analysis
-down_sample_rate = 5
-pre_stim = 1  # prestimulus time window, in seconds
-
-# parameters for iPDC analsis
-ROI_list = ['VISp', 'VISl', 'VISrl', 'VISal', 'VISpm', 'VISam']  # ROIs to include
-Mord = 15  # Model order
-ff = .98  # Filtering factor
-pdc_method = 'iPDC'  # Method for connectivity estimation
-# a list of dictionaries, each element of list indicate the parameters to consider on conditions for FC analysis,
-# put the values of dict as list
-stim_params = [{'contrast': [.8]}]
 
 PDC = {}  # To store a list of PDCs calculated used pdc_analysis function
 
@@ -79,14 +66,4 @@ for s_id in session_id2:
     # apply preprocessing: only load if preprocessing is done before
     LFP.preprocessing(cond_name=cond_name, down_sample_rate=down_sample_rate, pre_stim=pre_stim, do_RF=False, do_CSD=True)
 
-    # load the preprocessed data
-    # LFP.load_LFPprobes(LFP.preprocess[0])
 
-    # Then for each animal indicate a preprocessed data and first down sample spatially and apply iPDC
-    # layer selection -> Be careful: if you want to run this function, you should indicate the cortical layers manually
-    # LFP.layer_selection()
-
-    # PDC[s_id] = LFP.pdc_analysis(ROI_list=ROI_list, Mord=Mord, ff=ff, pdc_method=pdc_method, stim_params=stim_params[0])
-
-# iPDC analysis
-# To be added.
