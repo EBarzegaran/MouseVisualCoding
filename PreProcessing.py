@@ -17,12 +17,6 @@ manifest_path = os.path.join("/Volumes/Elham-Unifr/Data/AllenBrainAll/ecephys_pr
 cache = EcephysProjectCache.from_warehouse(manifest=manifest_path)
 
 # indicate the animal IDs from brain observatory set
-"""
-session_id1 = [732592105, 737581020, 739448407, 742951821, 743475441, 744228101,
-               750332458, 750749662, 754312389, 754829445, 757216464, 757970808,
-               759883607, 761418226, 763673393, 799864342]
-"""
-
 session_id1 = [732592105, 737581020, 739448407, 742951821, 744228101,
                750749662, 754312389, 754829445, 757216464, 757970808,
                759883607, 761418226, 799864342]
@@ -36,7 +30,6 @@ preproc_dict = {
     'srate': down_sample_rate,
     'prestim': pre_stim,
 }
-
 
 for s_id in session_id1:
     print(s_id)
@@ -56,8 +49,6 @@ session_id2 = [766640955, 767871931, 768515987, 771160300, 771990200,
 # parameters for epoching
 cond_name = 'drifting_gratings_75_repeats'  # condition for iPDC analysis
 
-PDC = {}  # To store a list of PDCs calculated used pdc_analysis function
-
 for s_id in session_id2:
     print(s_id)
     # -Load Data for a session
@@ -65,5 +56,4 @@ for s_id in session_id2:
 
     # apply preprocessing: only load if preprocessing is done before
     LFP.preprocessing(cond_name=cond_name, down_sample_rate=down_sample_rate, pre_stim=pre_stim, do_RF=False, do_CSD=True)
-
 

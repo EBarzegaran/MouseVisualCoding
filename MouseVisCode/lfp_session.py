@@ -1,6 +1,7 @@
 
 import os
-import MouseVisCode.probe_functions as ProbeF
+import probe_functions as ProbeF
+import pdc_functions as PDCF
 import _pickle as cPickle
 import pandas as pd
 import numpy as np
@@ -8,7 +9,6 @@ from functools import reduce
 import dynet_statespace as dsspace
 import dynet_con as dcon
 import xarray as xr
-import json
 
 class LFPSession(object):
     """
@@ -177,7 +177,7 @@ class LFPSession(object):
 
         self.layer_selected = True
 
-    def pdc_analysis(self, ROI_list=None, Mord=10, ff=.99, pdc_method='iPDC', stim_params=None, Freqs=np.array(range(1, 101)), preproc_params=None):
+    def pdc_analysis(self, ROI_list=None, Mord=10, ff=.99, pdc_method='iPDC', stim_params=None, Freqs=np.array(range(1, 101)), preproc_params=None, redo = False):
         """
         Calculates time- and frequency-resolved functional connectivity between the LFP signals based on STOK algorithm
         :param ROI_list: list of ROIs to be considered for this analysis
@@ -204,8 +204,8 @@ class LFPSession(object):
             'stim_param': stim_params
         }
 
-        filename = search_PDC(self.session_id, self.result_path, PDCparam_dict,preproc_params)
-        if os.path.isfile(filename):
+        filename = PDCF.search_PDC(self.session_id, self.result_path, PDCparam_dict, preproc_params)
+        if os.path.isfile(filename) and not redo:
             # load the file and return it
             file = open(filename, 'rb')
             PDC_dict = cPickle.load(file)
@@ -268,8 +268,8 @@ class LFPSession(object):
         # iPDC to xarray
         Time = Y['VISp'].time.values
         ROI_ls = np.array(ROI_labels).reshape(np.prod(np.array(ROI_labels).shape))
-        iPDC_xr = xr.DataArray(iPDC, dims=['source', 'target', 'freq' , 'time'],
-                         coords=dict(source= ROI_ls, target= ROI_ls, freq=Freqs, time=Time))
+        iPDC_xr = xr.DataArray(iPDC, dims=['target', 'source', 'freq' , 'time'],
+                         coords=dict(target= ROI_ls, source= ROI_ls, freq=Freqs, time=Time))
         # ROIs for output
         ROIs = list(Y.keys())
         chnl_ids = np.array(channel_ids).reshape(np.prod(np.array(channel_ids).shape))
@@ -279,7 +279,7 @@ class LFPSession(object):
         PDC_dict = {'session_id':self.session_id, 'KF': KF, 'ROIs': ROIs, 'PDC': iPDC_xr,
                 'probe_info': {'probe_ids': prb_ids, 'channel_ids': chnl_ids}, 'PDCparam_dict': PDCparam_dict, 'preproc_dict': preproc_params}
 
-        save_PDC(PDC_dict, self.result_path)
+        PDCF.save_PDC(PDC_dict, self.result_path)
 
         # save?
         return PDC_dict
@@ -298,33 +298,3 @@ def search_preproc(list_pre, dic_pre):
         result.append(sum(shared_items)==len(dic_pre))
     return [i for i, x in enumerate(result) if x]
     # maybe also searches if the files exist?
-
-
-def save_PDC(PDC_dict, path):
-
-    preproc_params = PDC_dict['preproc_dict']
-    PDC_params = PDC_dict['PDCparam_dict']
-
-    filename = search_PDC(PDC_dict['session_id'], path, PDC_params, preproc_params)
-    # save the iPDCs and the parameters used as a dictionary
-    filehandler = open(filename, "wb")
-    cPickle.dump(PDC_dict, filehandler)
-    filehandler.close()
-
-    return filename
-
-
-def search_PDC(session_id, result_path, PDCparams ,preproc_dict):
-
-    results = json.dumps(PDCparams['stim_param'])
-    stim = ""
-    for character in results:
-        if character not in ['{', '}', ']', '[', ':', '"', ' ']:
-            stim += character
-    stim = stim.replace(',', '_')
-
-    filename = os.path.join(result_path,'{}_{}_sr{}_prestim{}_Mord{}_ff{}_{}_{}.pkl'.format(
-        session_id, preproc_dict['cond_name'], preproc_dict['srate'], preproc_dict['prestim'],
-        PDCparams['Mord'], PDCparams['ff'], PDCparams['pdc_method'], stim))
-
-    return filename
