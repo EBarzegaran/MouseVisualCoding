@@ -1,11 +1,15 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+# add required paths
 import os
+import sys
+current_path = os.path.dirname(os.path.realpath(__file__))#os.getcwd()
+sys.path.insert(0, os.path.join(current_path,'MouseVisCode'))#
+
+# import functions
 from allensdk.brain_observatory.ecephys.ecephys_project_cache import EcephysProjectCache
-from MouseVisCode import lfp_session
-import time
-from lfp_session import search_preproc
+import lfp_session
 
 ResultPath = '/Volumes/Elham-Unifr/Data/AllenBrainAll/Results'  # where to save the results
 # set necessary paths

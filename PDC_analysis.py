@@ -1,15 +1,23 @@
+
+# add required folders
 import os
+import sys
+current_path = os.path.dirname(os.path.realpath(__file__))#os.getcwd()
+sys.path.insert(0, os.path.join(current_path,'MouseVisCode'))#
+sys.path.insert(0,os.path.join(current_path,'External','pydynet'))
+
+# import required functions
 from allensdk.brain_observatory.ecephys.ecephys_project_cache import EcephysProjectCache
-from MouseVisCode import lfp_session
-from MouseVisCode import pdc_functions as PDCF
+import lfp_session
+import pdc_functions as PDCF
 import _pickle as cPickle
 
-ResultPath = '/Volumes/Elham-Unifr/Data/AllenBrainAll/Results'  # where to save the results
 # set necessary paths
-if not os.path.exists(ResultPath):
-    os.mkdir(ResultPath)
+result_path = '/Volumes/Elham-Unifr/Data/AllenBrainAll/Results'  # where to save the results
+if not os.path.exists(result_path):
+    os.mkdir(result_path)
 
-# this path determines where the downloaded data will be stored
+# this path determines where the downloaded data is stored
 manifest_path = os.path.join("/Volumes/Elham-Unifr/Data/AllenBrainAll/ecephys_project_cache", "manifest.json")
 cache = EcephysProjectCache.from_warehouse(manifest=manifest_path)
 
@@ -42,7 +50,7 @@ PDC_ROI = {}  # To store a list of PDCs calculated used pdc_analysis function
 for s_id in session_id1:
     print('Session_id:{}'.format(s_id))
     # -Load Data for a session
-    LFP = lfp_session.LFPSession(cache=cache, session_id=s_id, result_path=ResultPath)
+    LFP = lfp_session.LFPSession(cache=cache, session_id=s_id, result_path=result_path)
 
     # apply preprocessing: only if preprocessing is not done before
     LFP.preprocessing(cond_name=cond_name, down_sample_rate=down_sample_rate, pre_stim=pre_stim, do_RF=False,
@@ -54,7 +62,7 @@ for s_id in session_id1:
 
 PDC_all_BO = PDCF.aggregate_PDC_ROI(list(PDC_ROI.values()))
 PDCparam_dict = PDC['PDCparam_dict']
-# ----------------------------------------------------------------------------------
+# --------------------------same analysis on functional connectivity set-------------------------------------
 
 # indicate the animal IDs from functional connectivity stimulus set
 session_id2 = [766640955, 767871931, 768515987, 771160300, 771990200,
@@ -69,7 +77,7 @@ preproc_dict_FC = { # which preprocessing to use for PDC analysis
 for s_id in session_id2:
     print('Session_id:{}'.format(s_id))
     # -Load Data for a session
-    LFP = lfp_session.LFPSession(cache=cache, session_id=s_id, result_path=ResultPath)
+    LFP = lfp_session.LFPSession(cache=cache, session_id=s_id, result_path=result_path)
 
     # apply preprocessing: only if preprocessing is not done before
     LFP.preprocessing(cond_name=cond_name2, down_sample_rate=down_sample_rate, pre_stim=pre_stim, do_RF=False,
@@ -83,17 +91,20 @@ PDC_all_FC = PDCF.aggregate_PDC_ROI([PDC_ROI[x] for x in session_id2])
 
 PDC_all = PDCF.aggregate_PDC_ROI(list(PDC_ROI.values()))
 
+# --------------------------------------Save the average and full data--------------------------------------------------
+# save the data in a average folder
+AverageResult = os.path.join(result_path,'AverageResults')
+if not os.path.isdir(AverageResult):
+    os.mkdir(AverageResult)
 
-# ----------------------Save the average and full data--------------------------------
 # full is the PDC_ROI & PDCparam_dict_FC & PDCparam_dict and preproc_dict_BO & preproc_dict_FC
-file_name = PDCF.search_PDC("FullData_ROI", ResultPath, PDCparam_dict, preproc_dict_BO)
+file_name = PDCF.search_PDC("FullData_ROI", AverageResult, PDCparam_dict, preproc_dict_BO) # full data
 filehandler = open(file_name, "wb")
 cPickle.dump({'PDCs': PDC_ROI,'PDCparam_dict': PDCparam_dict,
               'preproc_dict_BO': preproc_dict_BO, 'preproc_dict_FC' : preproc_dict_FC}, filehandler)
 filehandler.close()
 
-
-file_name = PDCF.search_PDC("AverageData_ROI", ResultPath, PDCparam_dict, preproc_dict_BO)
+file_name = PDCF.search_PDC("AverageData_ROI", AverageResult, PDCparam_dict, preproc_dict_BO) # Averaged data
 filehandler = open(file_name, "wb")
 cPickle.dump({'PDC_Average_BO': PDC_all_BO, 'PDC_Average_FC': PDC_all_FC,'PDC_Average_all': PDC_all,
               'preproc_dict_BO': preproc_dict_BO, 'preproc_dict_FC' : preproc_dict_FC}, filehandler)

@@ -6,7 +6,6 @@ import lfp_functions as LFPF
 import scipy.signal as signal
 import _pickle as cPickle
 import xarray as xr
-from allensdk.brain_observatory.ecephys.ecephys_project_cache import EcephysProjectCache
 from scipy.ndimage.filters import gaussian_filter
 
 
