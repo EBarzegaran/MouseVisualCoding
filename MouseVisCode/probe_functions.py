@@ -7,6 +7,9 @@ import scipy.signal as signal
 import _pickle as cPickle
 import xarray as xr
 from scipy.ndimage.filters import gaussian_filter
+from scipy import signal
+
+from sklearn.decomposition import FastICA, PCA
 
 
 def extract_probeinfo(session, lfp, probe_id, Resultspath, doRF):
@@ -42,13 +45,13 @@ def extract_probeinfo(session, lfp, probe_id, Resultspath, doRF):
     if not os.path.isdir(os.path.join(Resultspath, 'PrepData')):
         os.mkdir(os.path.join(Resultspath, 'PrepData'))
 
-    a_file = open(os.path.join(Resultspath,'PrepData','{}_ProbeInfo.pkl'.format(probe_id)), "wb")
-    #cPickle.dump({'Coords':A.to_dict('list'),'structure_acronyms':structure_acronyms,'intervals':intervals},a_file)
+    a_file = open(os.path.join(Resultspath, 'PrepData', '{}_ProbeInfo.pkl'.format(probe_id)), "wb")
+    # cPickle.dump({'Coords':A.to_dict('list'),'structure_acronyms':structure_acronyms,'intervals':intervals},a_file)
     cPickle.dump({'Coords': A, 'structure_acronyms': structure_acronyms, 'intervals': intervals}, a_file)
     a_file.close()
 
 
-def prepare_condition(session, session_id, lfp, probe_id, cond_name, Resultspath, Prestim, down_rate):
+def prepare_condition(session, session_id, lfp, probe_id, cond_name, Resultspath, Prestim, down_rate, do_save=True):
     """
     epoch the data and apply down-sampling
     :param session: allensdk session
@@ -76,7 +79,7 @@ def prepare_condition(session, session_id, lfp, probe_id, cond_name, Resultspath
     # structure_acronyms[structure_acronyms.shape[0] - 2]
 
     # --------------------------Output File------------------------------
-    #Times = results['time'].mean(axis=1)[:, 0]
+    # Times = results['time'].mean(axis=1)[:, 0]
     Time_nanzero = np.nansum(results['time'], axis=0) != 0
     Times = [np.mean(results['time'][:, Time_nanzero[:, x], x], axis=1) for x in range(0, Time_nanzero.shape[1])][0]
 
@@ -86,7 +89,7 @@ def prepare_condition(session, session_id, lfp, probe_id, cond_name, Resultspath
     if cond_name == 'flashes':
         lfp_cond = LFPF.csd(LFPF.gaussian_filter_trials(lfp_cond, 1))  # just in case of flashes for layer assignment
     else:
-        lfp_cond = LFPF.bipolar(lfp_cond)# LFPF.gaussian_filter_trials(lfp_cond, 1));
+        lfp_cond = LFPF.bipolar(lfp_cond)  # LFPF.gaussian_filter_trials(lfp_cond, 1));
 
     Y = lfp_cond
     Y = np.moveaxis(Y, -2, 0)
@@ -103,26 +106,30 @@ def prepare_condition(session, session_id, lfp, probe_id, cond_name, Resultspath
                         cnd_id))  # each condition info
     cnd_info = pd.concat(cnd_info, axis=1).transpose()
 
-
-    # save the data
-    if not os.path.exists(os.path.join(Resultspath, 'PrepData')):
-        os.mkdir(os.path.join(Resultspath, 'PrepData'))
-
     # convert to class?
-    LFPdata = LFPprobe(session_id,probe_id,structure_acronyms[structure_acronyms.shape[0] - 2],Y,dSRate, results['channel'], Times, cnd_id, cnd_info)
+    LFPdata = LFPprobe(session_id, probe_id, structure_acronyms[structure_acronyms.shape[0] - 2], Y, dSRate,
+                       results['channel'], Times, cnd_id, cnd_info)
 
-    a_file = open(os.path.join(Resultspath, 'PrepData', '{}_{}{}_pres{}s.pkl'.format(probe_id, cond_name, int(down_rate),Prestim)), "wb")
+    if do_save:
+        # save the data
+        if not os.path.exists(os.path.join(Resultspath, 'PrepData')):
+            os.mkdir(os.path.join(Resultspath, 'PrepData'))
 
-    cPickle.dump(LFPdata.__dict__, a_file)
-    a_file.close()
+        a_file = open(os.path.join(Resultspath, 'PrepData',
+                                   '{}_{}{}_pres{}s.pkl'.format(probe_id, cond_name, int(down_rate), Prestim)), "wb")
 
-    """
-    cPikle.dump({'Y': Y, 'Times': Times, 'srate': dSRate, 'cnd_info': cnd_info.to_dict("list"), 'cnd_id': cnd_id
-                    , 'ROI': structure_acronyms[structure_acronyms.shape[0] - 2]}, a_file)
-                    
-    """
-    a_file.close()
-    return structure_acronyms[structure_acronyms.shape[0] - 2]
+        cPickle.dump(LFPdata.__dict__, a_file)
+        a_file.close()
+
+        """
+        cPikle.dump({'Y': Y, 'Times': Times, 'srate': dSRate, 'cnd_info': cnd_info.to_dict("list"), 'cnd_id': cnd_id
+                        , 'ROI': structure_acronyms[structure_acronyms.shape[0] - 2]}, a_file)
+                        
+        """
+        a_file.close()
+        return structure_acronyms[structure_acronyms.shape[0] - 2]
+    else:
+        return LFPdata
 
 
 def CSD_plots(session, lfp, probe_id, Resultspath):
@@ -147,7 +154,7 @@ def CSD_plots(session, lfp, probe_id, Resultspath):
     ax.set_ylabel("vertical position (um)", fontsize=20)
 
     structure_acronyms, intervals = session.channel_structure_intervals(lfp["channel"])
-    #interval_midpoints = [aa + (bb - aa) / 2 for aa, bb in zip(intervals[:-1], intervals[1:])]
+    # interval_midpoints = [aa + (bb - aa) / 2 for aa, bb in zip(intervals[:-1], intervals[1:])]
     plt.title(structure_acronyms[structure_acronyms.shape[0] - 2])
     fig.savefig('{}/Probe_{}_CSD_original.png'.format(Resultspath, probe_id), dpi=300)
     plt.close()
@@ -168,13 +175,13 @@ def CSD_plots(session, lfp, probe_id, Resultspath):
     # -test the intervals-
     VISs = [x.find('VIS') for x in [str(x) for x in structure_acronyms]]
     VIS_ind = np.where(np.array(VISs) == 0)[0]
-    lfp_cond = lfp_cond[intervals[VIS_ind.min()]:intervals[VIS_ind.max()+1]]
+    lfp_cond = lfp_cond[intervals[VIS_ind.min()]:intervals[VIS_ind.max() + 1]]
 
-    #lfp_cond = lfp_cond[intervals[intervals.shape[0] - 3]:intervals[intervals.shape[0] - 2]]
+    # lfp_cond = lfp_cond[intervals[intervals.shape[0] - 3]:intervals[intervals.shape[0] - 2]]
 
     # -remove trials with nan values as time-
-    Time_nanzero = np.nansum(results['time'],axis=0) != 0
-    Time = [np.mean(results['time'][:,Time_nanzero[:,x],x],axis=1) for x in range(0,Time_nanzero.shape[1])]
+    Time_nanzero = np.nansum(results['time'], axis=0) != 0
+    Time = [np.mean(results['time'][:, Time_nanzero[:, x], x], axis=1) for x in range(0, Time_nanzero.shape[1])]
 
     # -Figure configs-
     fig, axs = plt.subplots(1, 2)
@@ -187,7 +194,7 @@ def CSD_plots(session, lfp, probe_id, Resultspath):
         TimeWin = Time[Cnd]
         ZeroPoint = abs(TimeWin[~np.isnan(TimeWin)] - .0).argmin()
         ax = axs[Cnd]
-        lfp_cond_M = np.nanmean(lfp_cond[:, :, Time_nanzero[:,Cnd], Cnd], axis=2)
+        lfp_cond_M = np.nanmean(lfp_cond[:, :, Time_nanzero[:, Cnd], Cnd], axis=2)
         # -Plot-
         p = ax.pcolormesh(lfp_cond_M)
         # -Ytick-
@@ -203,7 +210,8 @@ def CSD_plots(session, lfp, probe_id, Resultspath):
         ax.set_xlim([0, min(np.argwhere(np.isnan(TimeWin)))])
         ax.plot([ZeroPoint, ZeroPoint], [0, lfp_cond.shape[0]], 'w--')
         # -TitleAndColormap-
-        ax.set_title('Cond#{}-{}-{}'.format(CI.unique()[Cnd],structure_acronyms[structure_acronyms.shape[0] - 2],len(VIS_ind)))
+        ax.set_title(
+            'Cond#{}-{}-{}'.format(CI.unique()[Cnd], structure_acronyms[structure_acronyms.shape[0] - 2], len(VIS_ind)))
         # fig.set_clim(-1,1)
         cbar = fig.colorbar(p, ax=ax)  # format=ticker.FuncFormatter(fmt))
         cbar.formatter.set_powerlimits((0, 0))
@@ -277,38 +285,75 @@ def layer_selection(layer_table, probe_id, result_path):
     :return: the channel IDs of six layers for that probe
     """
     # read the probe info and return error if do not find any
-    file = open(os.path.join(result_path,'PrepData','{}_ProbeInfo.pkl'.format(probe_id)), "rb")
+    file = open(os.path.join(result_path, 'PrepData', '{}_ProbeInfo.pkl'.format(probe_id)), "rb")
     dataPickle = file.read()
     file.close()
     probe_info = cPickle.loads(dataPickle)
 
     # indicate layers channel ids and return them
     Coord = probe_info['Coords']
-    Coord.sort_values('id', inplace=True,ascending=True)
+    Coord.sort_values('id', inplace=True, ascending=True)
     Coord.reset_index(inplace=True)
 
     # select structure acronym: find the one starts with VIs?
     # Attention: indexing is should be -1
-    #Ind_area = range(probe_info['intervals'][-2]-1,probe_info['intervals'][-3]-1,-1)
-    VISs = [x.find('VIS') for x in [str(x) for x in probe_info['structure_acronyms']]] # in case of fragmented ROI
+    # Ind_area = range(probe_info['intervals'][-2]-1,probe_info['intervals'][-3]-1,-1)
+    VISs = [x.find('VIS') for x in [str(x) for x in probe_info['structure_acronyms']]]  # in case of fragmented ROI
     VIS_ind = np.where(np.array(VISs) == 0)[0]
-    Ind_area = range(probe_info['intervals'][VIS_ind.max() + 1]-1,probe_info['intervals'][VIS_ind.min()]-1,-1)
+    Ind_area = range(probe_info['intervals'][VIS_ind.max() + 1] - 1, probe_info['intervals'][VIS_ind.min()] - 1, -1)
+    Ind_area2 = range(probe_info['intervals'].max() - 1, probe_info['intervals'].min() - 1, -1)
+    Ind_area2 = (probe_info['intervals'][VIS_ind.max() + 1] - 1) - np.array(Ind_area2)
 
-    # reverse order and apply the layers:
-    channel_ids = Coord['id'].loc[Ind_area] # select only VISp area
-    Ind_layers = layer_table['P{}'.format(probe_id)].loc[['L{}'.format(x) for x in range(1,7)]]-1
+    # Select the layers:
+    #channel_ids = Coord['id'].loc[Ind_area]  # select only VISp area
+    Ind_layers = layer_table['P{}'.format(probe_id)].loc[['L{}'.format(x) for x in range(1, 7)]] - 1
+    #channel_Inds = probe_info['intervals'].max() - 1 - np.array([np.where(Ind_area2 == i)[0][0] for i in Ind_layers])
 
-    #return the channels ids
+    # return the channels ids
     if np.isnan(Ind_layers).to_numpy().sum() == 0:
-        return channel_ids.iloc[Ind_layers]
+        channel_Inds = probe_info['intervals'].max() - 1 - np.array(
+            [np.where(Ind_area2 == i)[0][0] for i in Ind_layers])
+        return Coord['id'].iloc[channel_Inds]
     else:
         return []
+
+
+def LFP_plot(Y, TimeWin, figure_path):
+    nroi = len(Y.keys())
+    fig, axs = plt.subplots(nrows=nroi, ncols=1, figsize=(6, 2 * nroi), sharex=True)
+
+    for i in range(0, nroi):
+        roi = list(Y.keys())[i]
+        T = Y[roi].time.values
+        T_ind = np.where((T >= TimeWin[0]) & (T <= TimeWin[1]))[0]
+        y = Y[roi].isel(time=T_ind)
+        y = np.moveaxis(y.__array__(), -1, 0)
+        dims = y.shape
+        y2 = y.reshape(dims[0] * dims[1], dims[2], dims[3])
+        MEAN = np.nanmean(y2, axis=0).transpose()
+        SEM = (np.nanstd(y2, axis=0) / (y2.shape[0] ** .5)).transpose()
+        offset = MEAN.max(axis=(0, 1))
+        for l in range(0, MEAN.shape[1]):
+            axs[i].plot(T[T_ind], MEAN[:, l] - (offset * l), linewidth=1, label='L{}'.format(l))
+            axs[i].fill_between(T[T_ind], MEAN[:, l] - (offset * l) + SEM[:, l], MEAN[:, l] - (offset * l) - SEM[:, l],
+                                alpha=.5)
+            axs[i].set_title(roi)
+            axs[i].set_yticks([])
+            axs[i].axvline(x=0, linewidth=1, linestyle='--', color='k')
+            if i == nroi - 1:
+                axs[i].set_xlabel('Time')
+                axs[i].set_xlim(TimeWin[0], TimeWin[1])
+                axs[i].legend(loc='right')
+
+    plt.savefig(figure_path, bbox_inches='tight', dpi=300)
+    plt.close(fig)
 
 
 class LFPprobe(object):
     """
     A class to store the LFPs of each probe
     """
+
     def __init__(self, session_id, probe_id, ROI, Y, srate, channels=None, time=None, cnd_id=None, cnd_info=None):
         """
 
@@ -320,15 +365,15 @@ class LFPprobe(object):
         self.session_id = session_id
         self.probe_id = probe_id
         self.ROI = ROI
-        if isinstance(Y,np.ndarray):
-            self.Y = xr.DataArray(Y, dims=['trial','channel', 'time', 'cnd_id'],
-                              coords=dict(trial=range(0, Y.shape[0]),channel=channels, time=time, cnd_id=cnd_id))
+        if isinstance(Y, np.ndarray):
+            self.Y = xr.DataArray(Y, dims=['trial', 'channel', 'time', 'cnd_id'],
+                                  coords=dict(trial=range(0, Y.shape[0]), channel=channels, time=time, cnd_id=cnd_id))
         else:
             self.Y = Y
         self.srate = srate
         self.cnd_info = cnd_info
 
-    @classmethod # Alternative constructor: read from file
+    @classmethod  # Alternative constructor: read from file
     def from_file(cls, filename):
         with open(filename, "rb") as file:
             dataPickle = file.read()
@@ -337,3 +382,60 @@ class LFPprobe(object):
         Arg_dict = cPickle.loads(dataPickle)
 
         return cls(**Arg_dict)
+
+
+def layer_reduction(Y, FS, probe_id, result_path):
+    """
+    Select 6 cortical layers based on dimensionality reduction methods
+    :param Y:
+    :param probe_id: the probe in that session
+    :param result_path: Path to session, to load probe information
+    :return: ?
+    """
+    # read the probe info and return error if do not find any
+    file = open(os.path.join(result_path, 'PrepData', '{}_ProbeInfo.pkl'.format(probe_id)), "rb")
+    dataPickle = file.read()
+    file.close()
+    probe_info = cPickle.loads(dataPickle)
+
+    # select structure acronym: find the one starts with VIs?
+    # Attention: indexing is should be -1
+    # Ind_area = range(probe_info['intervals'][-2]-1,probe_info['intervals'][-3]-1,-1)
+    VISs = [x.find('VIS') for x in [str(x) for x in probe_info['structure_acronyms']]]  # in case of fragmented ROI
+    VIS_ind = np.where(np.array(VISs) == 0)[0]
+    offset = 5
+    Ind_area = range(min(probe_info['intervals'][VIS_ind.max() + 1] - 1 + offset, probe_info['intervals'].max() - 1),
+                     probe_info['intervals'][VIS_ind.min()] - 1, -1)
+    Y2 = Y[:, Ind_area, :, :]
+    Y2 = np.moveaxis(Y2.__array__(), 0, -1)
+    dims = Y2.shape
+    Y2 = Y2.reshape(dims[0], dims[1] * dims[2] * dims[3], order="F")
+    Y2 = Y2[:, np.where(~np.isnan(Y2[1,:]))[0]]
+    # only hig gamma for layer selection
+
+    sos = signal.butter(10, 400, 'hp', fs=FS, output='sos')
+    Y2_filtered = signal.sosfilt(sos, Y2)
+
+
+    # spectrum
+    res = signal.welch(Y2, fs=FS)
+    Freqs = res[0]
+    PWelch = np.array(res[1])
+    PWelch_norm = np.divide(PWelch, np.linalg.norm(PWelch, axis=0))
+
+    return {'high_gamma_amp': np.absolute(Y2_filtered).sum(axis=1),
+            # 'low_gamma_amp': np.absolute(Y2_filtered_low).sum(axis=1),
+            'Pwelch_norm': PWelch_norm,
+            'Pwelch_Freq': Freqs,
+            'labels': (probe_info['intervals'][VIS_ind.max() + 1] - 1) - np.array(Ind_area)}
+
+    """
+    ica = FastICA(n_components=6, random_state=0)
+    X_transformed = ica.fit_transform(Coh.reshape(Coh.shape[0],Coh.shape[1]*Coh.shape[2]))
+    A_ica = ica.mixing_
+
+    pca = PCA(n_components=6)
+    H = pca.fit_transform(Y2_filtered.transpose())
+    A_pca = pca.components_
+    plt.plot(A_pca.transpose())
+    """

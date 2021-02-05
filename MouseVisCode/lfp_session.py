@@ -112,7 +112,7 @@ class LFPSession(object):
 
                 # Extract and prepare the data for a condition
                 if cond_name is not None:
-                    ROI = ProbeF.prepare_condition(self.session, self.session_id, lfp, probe_id, cond_name, self.result_path, pre_stim,down_sample_rate)
+                    ROI = ProbeF.prepare_condition(self.session, self.session_id, lfp, probe_id, cond_name, self.result_path, pre_stim, down_sample_rate)
                     self.ROIs[ROI] = probe_id
 
             # Add the pre-process params as a dictionary to the list of preprocessed data
@@ -167,8 +167,9 @@ class LFPSession(object):
 
         for probe_id in self.probes.keys():
             print(probe_id)
-            channel_id = ProbeF.layer_selection(layer_table, probe_id, self.result_path)
+            #ProbeF.layer_reduction(self.probes[probe_id].Y, probe_id, self.result_path)
 
+            channel_id = ProbeF.layer_selection(layer_table, probe_id, self.result_path)
             # select the LFP of those channels, and relabel the xarray dimensions
             if len(channel_id) > 0:
                 self.probes[probe_id].Y = self.probes[probe_id].Y.sel(channel=channel_id.to_list())
@@ -218,32 +219,9 @@ class LFPSession(object):
         self.layer_selection()
 
         # select the conditions and pool their trials together
-        Y = {} # to prepare the data for PDC analysis
-        Srate = {} # to make sure that Srates match
-        ROI_labels = []
-        channel_ids = []
-        probe_ids = []
-        for ROI in ROI_list:
-            if ROI in self.ROIs.keys():
-                probe_id = self.ROIs[ROI]
-                cnd_info = self.probes[probe_id].cnd_info
-                Cnds_inds = []
-                for k in stim_params.keys():
-                    Cnds = [cnd_info[k] == x for x in stim_params[k]]
-                    if len(Cnds)>1:
-                        Cnds_temp = reduce((lambda x, y: np.logical_or(x,y)), [c.to_numpy() for c in Cnds])
-                        Cnds_inds.append(Cnds_temp)
-                    else:
-                        Cnds_inds.append(Cnds)
-                Cnds_final = np.array(reduce((lambda x, y: np.logical_and(x,y)), Cnds_inds))
-                Cnds_inds_final = cnd_info['stimulus_condition_id'].to_numpy()[Cnds_final.squeeze()]
-
-                # Prepare for output
-                Y[ROI] = self.probes[probe_id].Y.sel(cnd_id=Cnds_inds_final)
-                Srate[ROI] = self.probes[probe_id].srate
-                ROI_labels.append(['{}_L{}'.format(ROI,i) for i in range(1,7)])
-                channel_ids.append(Y[ROI].channel.values)
-                probe_ids.append([probe_id for l in range(1,7)])
+        Result_pool = self.pool_data(preproc_params=preproc_params, stim_params= stim_params, ROI_list = ROI_list)
+        Y = Result_pool['Y']
+        Srate = Result_pool['Srate']
 
         # pull together and ROI-layer index
         srate = np.unique(np.array(list(Srate.values())))
@@ -252,28 +230,29 @@ class LFPSession(object):
             return
 
         # Put the data from all ROIs together for PDC calculations
-        Y_temp = np.concatenate(list(Y.values()), axis=1) # second dimension is the channels
+        Y_temp = np.concatenate(list(Y.values()), axis=1)  # second dimension is the channels
         Y_temp = np.moveaxis(Y_temp, -1, 0)
         YS = list(Y_temp.shape)
-        Y_pool = Y_temp.reshape([YS[0]*YS[1], YS[2], YS[3]])
+        Y_pool = Y_temp.reshape([YS[0] * YS[1], YS[2], YS[3]])
         # remove possible zero and NaN values (trials)
         nzero_trl = Y_pool[:, :, 10] != 0
         nzero_trl_ind = reduce((lambda x, y: np.logical_or(x, y)), nzero_trl.transpose())
         nNan_trl_ind = np.isnan(Y_pool).sum(axis=2).sum(axis=1) == 0
         Y_pooled = Y_pool[nzero_trl_ind & nNan_trl_ind, :, :]
 
+
         # iPDC matrix
         KF = dsspace.dynet_SSM_STOK(Y_pooled, p=Mord, ff=ff)
         iPDC = dcon.dynet_ar2pdc(KF, srate, Freqs, metric=pdc_method, univ=1, flow=2)
         # iPDC to xarray
         Time = Y['VISp'].time.values
-        ROI_ls = np.array(ROI_labels).reshape(np.prod(np.array(ROI_labels).shape))
+        ROI_ls = np.array(Result_pool['ROI_labels']).reshape(np.prod(np.array(Result_pool['ROI_labels']).shape))
         iPDC_xr = xr.DataArray(iPDC, dims=['target', 'source', 'freq' , 'time'],
                          coords=dict(target= ROI_ls, source= ROI_ls, freq=Freqs, time=Time))
         # ROIs for output
         ROIs = list(Y.keys())
-        chnl_ids = np.array(channel_ids).reshape(np.prod(np.array(channel_ids).shape))
-        prb_ids = np.array(probe_ids).reshape(np.prod(np.array(probe_ids).shape))
+        chnl_ids = np.array(Result_pool['channel_ids']).reshape(np.prod(np.array(Result_pool['channel_ids']).shape))
+        prb_ids = np.array(Result_pool['probe_ids']).reshape(np.prod(np.array(Result_pool['probe_ids']).shape))
 
         # save and return the output
         PDC_dict = {'session_id':self.session_id, 'KF': KF, 'ROIs': ROIs, 'PDC': iPDC_xr,
@@ -283,6 +262,64 @@ class LFPSession(object):
 
         # save?
         return PDC_dict
+
+    def pool_data(self, preproc_params=None, stim_params= None, ROI_list = None):
+
+        # select the conditions and pool their trials together
+        Y = {}  # to prepare the data for PDC analysis
+        Srate = {}  # to make sure that Srates match
+        ROI_labels = []
+        channel_ids = []
+        probe_ids = []
+        # All ROIs in this session
+        All_ROIs = [(self.probes[x].ROI, x) for x in self.probes.keys()]
+
+        for ROI in ROI_list:
+            # find the ROIs and the one with Layer assignment
+            ch_ind = [i for i, y in enumerate([x[0] for x in All_ROIs]) if y == ROI]
+            if bool(ch_ind): # in case of multiple recordings from the same ROI, I only labeled the one with better data
+                temp = [len(self.probes[All_ROIs[x][1]].Y)>0 for x in ch_ind] # find empty probes -> because no layer was assigned
+                ch_ind = ch_ind[temp.index(True)]
+
+            if bool(ch_ind): #self.ROIs.keys():
+                probe_id = All_ROIs[ch_ind][1]
+                cnd_info = self.probes[probe_id].cnd_info
+                Cnds_inds = []
+                for k in stim_params.keys():
+                    Cnds = [cnd_info[k] == x for x in stim_params[k]]
+                    if len(Cnds) > 1:
+                        Cnds_temp = reduce((lambda x, y: np.logical_or(x, y)), [c.to_numpy() for c in Cnds])
+                        Cnds_inds.append(Cnds_temp)
+                    else:
+                        Cnds_inds.append(Cnds)
+                Cnds_final = np.array(reduce((lambda x, y: np.logical_and(x, y)), Cnds_inds))
+                Cnds_inds_final = cnd_info['stimulus_condition_id'].to_numpy()[Cnds_final.squeeze()]
+
+                # Prepare for output
+                Y[ROI] = self.probes[probe_id].Y.sel(cnd_id=Cnds_inds_final)
+                Srate[ROI] = self.probes[probe_id].srate
+                ROI_labels.append(['{}_L{}'.format(ROI, i) for i in range(1, 7)])
+                channel_ids.append(Y[ROI].channel.values)
+                probe_ids.append([probe_id for l in range(1, 7)])
+
+
+
+        # Set other outputs
+        Time = Y['VISp'].time.values
+        ROIs = list(Y.keys())
+
+        return {'Y': Y, 'Srate': Srate, 'ROI_labels':ROI_labels, 'channel_ids':channel_ids, 'probe_ids':probe_ids}
+
+    def plot_LFPs(self, preproc_params=None, stim_params= None, ROI_list = None, TimeWin=None):
+
+        self.load_LFPprobes(preproc_params)
+        self.layer_selection()
+
+        Result_pool = self.pool_data(preproc_params=preproc_params, stim_params=stim_params, ROI_list=ROI_list)
+        figure_path = os.path.join(self.result_path, 'Average_LFP_{}_downs{}.png'.format(
+             preproc_params['cond_name'], int(preproc_params['srate'])))
+
+        ProbeF.LFP_plot(Result_pool['Y'],TimeWin, figure_path,)
 
 
 def search_preproc(list_pre, dic_pre):

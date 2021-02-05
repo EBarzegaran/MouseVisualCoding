@@ -22,7 +22,8 @@ manifest_path = os.path.join("/Volumes/Elham-Unifr/Data/AllenBrainAll/ecephys_pr
 cache = EcephysProjectCache.from_warehouse(manifest=manifest_path)
 
 # indicate the animal IDs from brain observatory set: animal # 739448407 does not have good quality
-session_id1 = [732592105, 737581020, 739448407,742951821, 744228101,
+session_id1 = [#732592105,
+               737581020, 739448407,742951821, 744228101,
                750749662, 754312389, 754829445, 757216464, 757970808,
                759883607, 761418226, 799864342]
 
@@ -57,11 +58,12 @@ for s_id in session_id1:
                       do_CSD=True, do_probe=False)
 
     # Apply PDC analysis on the loaded LFP between all ROIs and layers for each animal and save the results
-    PDC = LFP.pdc_analysis(ROI_list=ROI_list, Mord=Mord, ff=ff, pdc_method=pdc_method, stim_params=stim_params_BO[0], preproc_params = preproc_dict_BO, redo=False)
+    PDC = LFP.pdc_analysis(ROI_list=ROI_list, Mord=Mord, ff=ff, pdc_method=pdc_method, stim_params=stim_params_BO[0], preproc_params = preproc_dict_BO, redo=True)
     PDC_ROI[s_id] = PDCF.PDC_to_ROI(PDC)
 
 PDC_all_BO = PDCF.aggregate_PDC_ROI(list(PDC_ROI.values()))
 PDCparam_dict = PDC['PDCparam_dict']
+
 # --------------------------same analysis on functional connectivity set-------------------------------------
 
 # indicate the animal IDs from functional connectivity stimulus set
