@@ -278,8 +278,13 @@ class LFPSession(object):
             # find the ROIs and the one with Layer assignment
             ch_ind = [i for i, y in enumerate([x[0] for x in All_ROIs]) if y == ROI]
             if bool(ch_ind): # in case of multiple recordings from the same ROI, I only labeled the one with better data
-                temp = [len(self.probes[All_ROIs[x][1]].Y)>0 for x in ch_ind] # find empty probes -> because no layer was assigned
-                ch_ind = ch_ind[temp.index(True)]
+                temp = [len(self.probes[All_ROIs[x][1]].Y)>0 for x in ch_ind]
+                Emp_ind = np.where(np.array(temp))[0]# find empty probes -> because no layer was assigned
+                if len(Emp_ind)>0:
+                    ch_ind = ch_ind[Emp_ind[0]]
+                    #ch_ind = ch_ind[temp.index(True)]
+                else:
+                    ch_ind = []
 
             if bool(ch_ind): #self.ROIs.keys():
                 probe_id = All_ROIs[ch_ind][1]

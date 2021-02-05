@@ -22,8 +22,7 @@ manifest_path = os.path.join("/Volumes/Elham-Unifr/Data/AllenBrainAll/ecephys_pr
 cache = EcephysProjectCache.from_warehouse(manifest=manifest_path)
 
 # indicate the animal IDs from brain observatory set: animal # 739448407 does not have good quality
-session_id1 = [#732592105,
-               737581020, 739448407,742951821, 744228101,
+session_id1 = [732592105,737581020, 739448407, 742951821, 744228101,
                750749662, 754312389, 754829445, 757216464, 757970808,
                759883607, 761418226, 799864342]
 
