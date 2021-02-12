@@ -28,7 +28,7 @@ session_id1 = [732592105, 737581020, 739448407, 742951821, 744228101,
 # parameters for epoching
 cond_name = 'drifting_gratings'  # condition for iPDC analysis
 down_sample_rate = 5  # down-sampling rate-> orginal data is 1250
-pre_stim = 1  # prestimulus time window, in seconds
+pre_stim = .1  # prestimulus time window, in seconds
 preproc_dict = {
     'cond_name': cond_name,
     'srate': down_sample_rate,
@@ -41,7 +41,7 @@ for s_id in session_id1:
     LFP = lfp_session.LFPSession(cache=cache, session_id=s_id, result_path=ResultPath)
 
     # apply preprocessing: only load if preprocessing is done before
-    LFP.preprocessing(cond_name=cond_name, down_sample_rate=down_sample_rate, pre_stim=pre_stim, do_RF=False, do_CSD=True, do_probe=False)
+    LFP.preprocessing(cond_name=cond_name, down_sample_rate=down_sample_rate, pre_stim=pre_stim, do_RF=False, do_CSD=False, do_probe=False)
 
 
 # ----------------------------------------------------------------------------------------------------------------------

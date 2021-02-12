@@ -100,6 +100,9 @@ def prepare_condition(session, session_id, lfp, probe_id, cond_name, Resultspath
     Times = Times[np.arange(0, Times.shape[0], down_rate)]
     dSRate = SRate / down_rate
 
+    # start and stop time of each trial
+    time_start_stop_trl = results['time_start_stop']
+
     # condition info
     cnd_id = results['cnd_id']
     cnd_info = list(map(lambda x: presentations[presentations['stimulus_condition_id'] == x].iloc[0],
@@ -108,7 +111,7 @@ def prepare_condition(session, session_id, lfp, probe_id, cond_name, Resultspath
 
     # convert to class?
     LFPdata = LFPprobe(session_id, probe_id, structure_acronyms[structure_acronyms.shape[0] - 2], Y, dSRate,
-                       results['channel'], Times, cnd_id, cnd_info)
+                       results['channel'], Times, cnd_id, cnd_info, time_start_stop_trl)
 
     if do_save:
         # save the data
@@ -121,12 +124,6 @@ def prepare_condition(session, session_id, lfp, probe_id, cond_name, Resultspath
         cPickle.dump(LFPdata.__dict__, a_file)
         a_file.close()
 
-        """
-        cPikle.dump({'Y': Y, 'Times': Times, 'srate': dSRate, 'cnd_info': cnd_info.to_dict("list"), 'cnd_id': cnd_id
-                        , 'ROI': structure_acronyms[structure_acronyms.shape[0] - 2]}, a_file)
-                        
-        """
-        a_file.close()
         return structure_acronyms[structure_acronyms.shape[0] - 2]
     else:
         return LFPdata
@@ -354,7 +351,7 @@ class LFPprobe(object):
     A class to store the LFPs of each probe
     """
 
-    def __init__(self, session_id, probe_id, ROI, Y, srate, channels=None, time=None, cnd_id=None, cnd_info=None):
+    def __init__(self, session_id, probe_id, ROI, Y, srate, channels=None, time=None, cnd_id=None, cnd_info=None, time_start_stop_trl=None):
         """
 
         :param ID: Probe ID
@@ -372,6 +369,7 @@ class LFPprobe(object):
             self.Y = Y
         self.srate = srate
         self.cnd_info = cnd_info
+        self.time_start_stop_trl = time_start_stop_trl
 
     @classmethod  # Alternative constructor: read from file
     def from_file(cls, filename):

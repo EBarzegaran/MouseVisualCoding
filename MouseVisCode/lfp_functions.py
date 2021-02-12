@@ -76,7 +76,8 @@ def organize_epoch(lfp, presentations, prestim=.5, poststim=.0):
     # epoch the data
     Cond_id = []
     lfp_cond = np.zeros((min(lfp.shape), timelength, CI.value_counts().array[0], CI.nunique()))
-    time = np.full((timelength, CI.value_counts().array[0], CI.nunique()), np.nan)
+    time = np.full((timelength, CI.value_counts().array[0], CI.nunique()), np.nan) # time from stimulus onset
+    time_start_stop = np.full((2, CI.value_counts().array[0], CI.nunique()), np.nan)# time from experiment start
     for Cnd in range(0, CI.nunique()):
         if Cnd % 10 == 0: print(Cnd)
         Cond_id.append(CI.unique()[Cnd])
@@ -88,13 +89,16 @@ def organize_epoch(lfp, presentations, prestim=.5, poststim=.0):
             lfp_cond[:, 0:lfp[{"time": TW}].T.shape[1], Ind, Cnd] = lfp[
                 {"time": TW}].T  # sometimes the trial lengths are different
             time[0:lfp[{"time": TW}].T.shape[1], Ind, Cnd] = lfp["time"][TW].values - PC['start_time'].array[Ind]
+            # start and stop time for each stimulus
+            time_start_stop[0,Ind,Cnd] = PC['start_time'].array[Ind]
+            time_start_stop[1, Ind, Cnd] = PC['stop_time'].array[Ind]
     lfp_cond[0, :, :, :] = 0
     #lfp_cond2 = xr.DataArray(lfp_cond, dims=['channel', 'time', 'trial', 'cnd_id'],
     #                         coords=dict(channel=lfp['channel'], time=time.mean(axis=2).mean(axis=1), trial=range(0, 75), cnd_id=Cond_id))
     Channels = np.array(lfp.get_index('channel'))
     Channels.sort(axis=0)
 
-    return {'lfp': lfp_cond, 'cnd_id': Cond_id, 'time': time, 'channel':Channels}
+    return {'lfp': lfp_cond, 'cnd_id': Cond_id, 'time': time, 'channel':Channels, 'time_start_stop': time_start_stop}
 
 
 def bipolar(lfp, axis=0):
