@@ -72,7 +72,7 @@ def aggregate_PDC_ROI(PDC_ROI_list):
     # first indicate the ROIs in the list
     for roi in ROIs_All:
         s_ids = np.where(np.array([x['ROIs'].count(roi)>0 for x in PDC_ROI_list]))[0]
-        # -for animals with that ROI: make a list and concat them-
+        # -for animals with that ROI: make a list and concatenate them-
         PDC_temp = [PDC_ROI_list[x]['PDC_ROI'][roi] for x in s_ids]
         # -time indexes with non NaN values and round them 3 digit to be uniform-
         NNan_ind = [np.logical_not(np.isnan(x.time.values)) for x in PDC_temp]

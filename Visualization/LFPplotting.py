@@ -21,6 +21,7 @@ manifest_path = os.path.join("/Volumes/Elham-Unifr/Data/AllenBrainAll/ecephys_pr
 cache = EcephysProjectCache.from_warehouse(manifest=manifest_path)
 
 # indicate the animal IDs from brain observatory set
+
 session_id1 = [732592105, 737581020, 739448407, 742951821, 744228101,
                750749662, 754312389, 754829445, 757216464, 757970808,
                759883607, 761418226, 799864342]
@@ -37,6 +38,7 @@ preproc_dict = {
 stim_params = [{'contrast': [.8], 'temporal_frequency':[2.0]}]
 ROI_list = ['VISp', 'VISl', 'VISrl', 'VISal', 'VISpm', 'VISam']  # ROIs to include
 
+lfp_Y = {} # To store average LFPs for later plottings
 
 for s_id in session_id1:
     print('Animal #{}'.format(s_id))
@@ -44,7 +46,7 @@ for s_id in session_id1:
     LFP = lfp_session.LFPSession(cache=cache, session_id=s_id, result_path=ResultPath)
 
     # apply preprocessing: only load if preprocessing is done before
-    LFP.plot_LFPs(preproc_params=preproc_dict, stim_params= stim_params[0], ROI_list = ROI_list,TimeWin=[-.3, 1])
+    lfp_Y[s_id] = LFP.plot_LFPs(preproc_params=preproc_dict, stim_params= stim_params[0], ROI_list = ROI_list,TimeWin=[-.2, 1])
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -61,10 +63,14 @@ preproc_dict = {
 }
 
 for s_id in session_id2:
-    print(s_id)
+    print('Animal #{}'.format(s_id))
     # -Load Data for a session
     LFP = lfp_session.LFPSession(cache=cache, session_id=s_id, result_path=ResultPath)
 
     # apply preprocessing: only load if preprocessing is done before
-    LFP.plot_LFPs(preproc_params=preproc_dict, stim_params= stim_params[0], ROI_list = ROI_list,TimeWin=[-.3, 1])
+    lfp_Y[s_id] = LFP.plot_LFPs(preproc_params=preproc_dict, stim_params= stim_params[0], ROI_list = ROI_list,TimeWin=[-.3, 1])
 
+# -------------------------------Plot the grand average over animals----------------------------------------------------
+
+lfp_Y_avg = lfp_session.aggregate_LFP_ROI(lfp_Y)
+lfp_session.LFP_plot(lfp_Y_avg['Y'], [-.2, 1], lfp_session.ROIColors('layers'), 'test.png')

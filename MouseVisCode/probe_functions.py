@@ -315,36 +315,6 @@ def layer_selection(layer_table, probe_id, result_path):
         return []
 
 
-def LFP_plot(Y, TimeWin, figure_path):
-    nroi = len(Y.keys())
-    fig, axs = plt.subplots(nrows=nroi, ncols=1, figsize=(6, 2 * nroi), sharex=True)
-
-    for i in range(0, nroi):
-        roi = list(Y.keys())[i]
-        T = Y[roi].time.values
-        T_ind = np.where((T >= TimeWin[0]) & (T <= TimeWin[1]))[0]
-        y = Y[roi].isel(time=T_ind)
-        y = np.moveaxis(y.__array__(), -1, 0)
-        dims = y.shape
-        y2 = y.reshape(dims[0] * dims[1], dims[2], dims[3])
-        MEAN = np.nanmean(y2, axis=0).transpose()
-        SEM = (np.nanstd(y2, axis=0) / (y2.shape[0] ** .5)).transpose()
-        offset = MEAN.max(axis=(0, 1))
-        for l in range(0, MEAN.shape[1]):
-            axs[i].plot(T[T_ind], MEAN[:, l] - (offset * l), linewidth=1, label='L{}'.format(l))
-            axs[i].fill_between(T[T_ind], MEAN[:, l] - (offset * l) + SEM[:, l], MEAN[:, l] - (offset * l) - SEM[:, l],
-                                alpha=.5)
-            axs[i].set_title(roi)
-            axs[i].set_yticks([])
-            axs[i].axvline(x=0, linewidth=1, linestyle='--', color='k')
-            if i == nroi - 1:
-                axs[i].set_xlabel('Time')
-                axs[i].set_xlim(TimeWin[0], TimeWin[1])
-                axs[i].legend(loc='right')
-
-    plt.savefig(figure_path, bbox_inches='tight', dpi=300)
-    plt.close(fig)
-
 
 class LFPprobe(object):
     """

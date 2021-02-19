@@ -99,13 +99,13 @@ if not os.path.isdir(AverageResult):
     os.mkdir(AverageResult)
 
 # full is the PDC_ROI & PDCparam_dict_FC & PDCparam_dict and preproc_dict_BO & preproc_dict_FC
-file_name = PDCF.search_PDC("FullData_ROI", AverageResult, PDCparam_dict, preproc_dict_BO) # full data
+file_name = PDCF.search_PDC("FullData_ROI_PSD", AverageResult, PDCparam_dict, preproc_dict_BO) # full data
 filehandler = open(file_name, "wb")
 cPickle.dump({'PDCs': PDC_ROI,'PDCparam_dict': PDCparam_dict,
               'preproc_dict_BO': preproc_dict_BO, 'preproc_dict_FC' : preproc_dict_FC}, filehandler)
 filehandler.close()
 
-file_name = PDCF.search_PDC("AverageData_ROI", AverageResult, PDCparam_dict, preproc_dict_BO) # Averaged data
+file_name = PDCF.search_PDC("AverageData_ROI_PSD", AverageResult, PDCparam_dict, preproc_dict_BO) # Averaged data
 filehandler = open(file_name, "wb")
 cPickle.dump({'PDC_Average_BO': PDC_all_BO, 'PDC_Average_FC': PDC_all_FC,'PDC_Average_all': PDC_all,
               'preproc_dict_BO': preproc_dict_BO, 'preproc_dict_FC' : preproc_dict_FC}, filehandler)

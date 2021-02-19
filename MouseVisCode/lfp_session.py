@@ -9,6 +9,8 @@ from functools import reduce
 import dynet_statespace as dsspace
 import dynet_con as dcon
 import xarray as xr
+import matplotlib.pyplot as plt
+from functools import reduce
 
 class LFPSession(object):
     """
@@ -243,7 +245,7 @@ class LFPSession(object):
 
         # iPDC matrix
         KF = dsspace.dynet_SSM_STOK(Y_pooled, p=Mord, ff=ff)
-        iPDC = dcon.dynet_ar2pdc(KF, srate, Freqs, metric=pdc_method, univ=1, flow=2)
+        iPDC = dcon.dynet_ar2pdc(KF, srate, Freqs, metric=pdc_method, univ=1, flow=2, PSD =1)
         # iPDC to xarray
         Time = Y['VISp'].time.values
         ROI_ls = np.array(Result_pool['ROI_labels']).reshape(np.prod(np.array(Result_pool['ROI_labels']).shape))
@@ -286,7 +288,7 @@ class LFPSession(object):
                 else:
                     ch_ind = []
 
-            if bool(ch_ind): #self.ROIs.keys():
+            if bool(ch_ind) or (ch_ind==0): #if there is a probe
                 probe_id = All_ROIs[ch_ind][1]
                 cnd_info = self.probes[probe_id].cnd_info
                 Cnds_inds = []
@@ -324,7 +326,10 @@ class LFPSession(object):
         figure_path = os.path.join(self.result_path, 'Average_LFP_{}_downs{}.png'.format(
              preproc_params['cond_name'], int(preproc_params['srate'])))
 
-        ProbeF.LFP_plot(Result_pool['Y'],TimeWin, figure_path,)
+        colors = ROIColors('layers')
+        LFP_plot(Result_pool['Y'],TimeWin, colors, figure_path)
+        # Return averaged Y
+        return dict((x,y.mean(axis=(0,3))) for x,y in Result_pool['Y'].items())
 
 
 def search_preproc(list_pre, dic_pre):
@@ -340,3 +345,122 @@ def search_preproc(list_pre, dic_pre):
         result.append(sum(shared_items)==len(dic_pre))
     return [i for i, x in enumerate(result) if x]
     # maybe also searches if the files exist?
+
+
+class ROIColors(object):
+    """
+    A Class that defines uniform colorings for ROIs and layers for visualization
+    """
+
+    def __init__(self,color_type='uni'):
+        """
+        Initializes the colors class
+        :param color_type: 'uni'/'layers' indicate if it should return only one color per ROI ('Uni')
+                            or 6 colors per ROI, for 6 layers('Layers')
+        """
+        roi_colors_rgb = {'VISp': [.43, .25, .63], 'VISl': [0.03, 0.29, 0.48], 'VISrl': [0.26, 0.68, 0.76],
+                          'VISal': [0.65, 0.46, 0.11], 'VISpm': [1, .7, .3], 'VISam': [0.8, 0.11, 0.11]}
+        self.ROI_names = {'VISp': 'V1', 'VISl': 'LM', 'VISrl': 'RL', 'VISal': 'AL', 'VISpm': 'PM', 'VISam': 'AM'}
+
+        if color_type == 'uni':
+            self.roi_colors_rgb = roi_colors_rgb
+            self.roi_colors_hex = dict((x, '#%02x%02x%02x' % (int(v[0] * 255), int(v[1] * 255), int(v[2] * 255))) for x, v in
+                                  roi_colors_rgb.items())
+        elif color_type =='layers':
+            offset = np.arange(-.25,.26,.1)
+            roi_colors_rgb_layers = dict(
+                (x, np.array([np.minimum(np.maximum(v + x, 0), 1) for x in offset])) for x, v in roi_colors_rgb.items())
+            self.roi_colors_rgb = roi_colors_rgb_layers
+
+            self.roi_colors_hex = dict((x,['#%02x%02x%02x' % (int(v[0]*255), int(v[1]*255), int(v[2]*255)) for v in k])
+                for x,k in roi_colors_rgb_layers.items())
+
+        else:
+            print ('Wrong color type')
+            return
+
+        self.color_type = color_type
+
+
+def LFP_plot(Y, TimeWin, colors, figure_path):
+    """
+    A general function to plot LFP averages
+    :param Y: LFP data with dimensions :trials x layers x time x conditions
+    :param TimeWin:
+    :param colors:
+    :param figure_path:
+    :return:
+    """
+    nroi = len(Y.keys())
+    fig, axs = plt.subplots(nrows=nroi, ncols=1, figsize=(6, 2 * nroi), sharex=True)
+    # ordered ROIs: for uniformity puporse
+    ordered_rois = ['VISp','VISl','VISrl','VISal','VISpm','VISam']
+    ROIs = list(filter(lambda x: (x in list(Y.keys())), ordered_rois))
+
+    # for each ROI plot mean and SEM
+    for i in range(0, nroi):
+        roi = ROIs[i]
+        T = Y[roi].time.values
+        T_ind = np.where((T >= TimeWin[0]) & (T <= TimeWin[1]))[0]
+        y = Y[roi].isel(time=T_ind)
+        y = np.moveaxis(y.__array__(), -1, 0)
+        dims = y.shape
+        y2 = y.reshape(dims[0] * dims[1], dims[2], dims[3])
+        MEAN = np.nanmean(y2, axis=0).transpose()
+        SEM = (np.nanstd(y2, axis=0) / (y2.shape[0] ** .5)).transpose()
+        offset = abs(MEAN).max(axis=(0, 1))
+        yticks = np.zeros([MEAN.shape[1],1])
+        for l in range(0, MEAN.shape[1]):
+            MEAN_plot = MEAN[:, l] - (offset * l)
+            axs[i].plot(T[T_ind], MEAN_plot,
+                        linewidth=1, label='L{}'.format(l), color=colors.roi_colors_hex[roi][l])
+            axs[i].fill_between(T[T_ind], MEAN[:, l] - (offset * l) + SEM[:, l], MEAN[:, l] - (offset * l) - SEM[:, l],
+                                alpha=.5, color=colors.roi_colors_hex[roi][l])
+            yticks[l]= MEAN_plot[T[T_ind]<0].mean()
+        axs[i].set_title(colors.ROI_names[roi])
+        axs[i].set_yticks(yticks)
+        axs[i].set_yticklabels(['L{}'.format(i+1) for i in range(0, MEAN.shape[1])])
+        axs[i].axvline(x=0, linewidth=1, linestyle='--', color='k')
+        axs[i].grid(True)
+
+        if i == nroi - 1:
+            axs[i].set_xlabel('Time(S)',fontweight='bold')
+            axs[i].set_xlim(TimeWin[0], TimeWin[1])
+            #axs[i].legend(loc='right')
+
+    plt.savefig(figure_path, bbox_inches='tight', dpi=300)
+    plt.close(fig)
+
+def aggregate_LFP_ROI(Y_list):
+    """
+
+    :param Y_list:
+    :return:
+    """
+    ROIs_All = reduce(lambda x, y: list(set().union(x, y)), [x.keys() for x in Y_list.values()])
+
+    Y_ROI_all = {'session_ids': Y_list.keys(),
+                   'ROIs': ROIs_All,
+                   'Y': {}}
+    # first indicate the ROIs in the list
+    for roi in ROIs_All:
+        s_ids = np.where(np.array([list(x.keys()).count(roi) > 0 for x in Y_list.values()]))[0]
+        # -for animals with that ROI: make a list and concatenate them-
+        LFP_temp = [Y_list[list(Y_list.keys())[x]][roi] for x in s_ids]
+        # -time indexes with non NaN values and round them 3 digit to be uniform-
+        NNan_ind = [np.logical_not(np.isnan(x.time.values)) for x in LFP_temp]
+        NNan_ind = reduce(lambda x, y: np.logical_and(x[:min(len(x), len(y))], y[:min(len(x), len(y))]), NNan_ind)
+        LFP_temp2 = []
+
+        for lfp in LFP_temp:  # loop over animals
+            lfp.time.values = np.round(lfp.time.values, 3)
+            lfp.channel.values = np.arange(0,len(lfp.channel.values))
+            LFP_temp2.append(lfp.isel(time=np.where(NNan_ind)[0]))
+
+        # -calculate average over animals-??
+        #Y_ROI_all['Y'][roi] = np.array(LFP_temp2).mean(axis=0)
+        Y_temp = np.expand_dims(np.array(LFP_temp2),axis=3)
+        Y_ROI_all['Y'][roi] = xr.DataArray(Y_temp, dims=['trial', 'channel', 'time', 'cnd_id'],
+                              coords=dict(trial=range(0, Y_temp.shape[0]), channel=lfp.channel.values, time=lfp.time.values[:Y_temp.shape[2]], cnd_id=[1]))
+
+    return Y_ROI_all
